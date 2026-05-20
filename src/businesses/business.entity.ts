@@ -47,6 +47,9 @@ export class Business {
   @Column({ nullable: true })
   facebook: string;
 
+  @Column({ nullable: true })
+  products: string;
+
   @Column({ default: true })
   isOpen: boolean;
 
