@@ -23,6 +23,10 @@ export class BusinessesService {
     return this.businessRepository.find({ where: { status: 'pending' } });
   }
 
+  async findOne(id: number): Promise<Business | null> {
+    return this.businessRepository.findOne({ where: { id: id } });
+  }
+
   async update(id: number, data: Partial<Business>): Promise<Business | null> {
     await this.businessRepository.update(id, data);
     return this.businessRepository.findOne({ where: { id: id } });

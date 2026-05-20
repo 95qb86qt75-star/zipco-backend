@@ -24,6 +24,11 @@ export class BusinessesController {
     return this.businessesService.findPending();
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: number) {
+    return this.businessesService.findOne(id);
+  }
+
   @Patch(':id')
   @UseGuards(AuthGuard('jwt'))
   update(@Param('id') id: number, @Body() data: Partial<Business>, @Request() req) {
