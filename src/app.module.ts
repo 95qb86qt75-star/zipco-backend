@@ -14,13 +14,10 @@ import { AuthModule } from './auth/auth.module';
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: 'Bonat01$',
-      database: 'zipco',
+      url: process.env.DATABASE_URL,
       entities: [Business, Category, User],
       synchronize: true,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
     BusinessesModule,
     CategoriesModule,
