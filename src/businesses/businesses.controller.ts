@@ -24,6 +24,17 @@ export class BusinessesController {
     return this.businessesService.findPending();
   }
 
+  @Get('nearby')
+  findNearby(
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radius') radius: number,
+    @Query('categoryId') categoryId?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.businessesService.findNearby(lat, lng, radius, categoryId, search);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: number) {
     return this.businessesService.findOne(id);
@@ -49,16 +60,5 @@ export class BusinessesController {
   @Patch(':id/reject')
   reject(@Param('id') id: number) {
     return this.businessesService.reject(id);
-  }
-
-  @Get('nearby')
-  findNearby(
-    @Query('lat') lat: number,
-    @Query('lng') lng: number,
-    @Query('radius') radius: number,
-    @Query('categoryId') categoryId?: number,
-    @Query('search') search?: string,
-  ) {
-    return this.businessesService.findNearby(lat, lng, radius, categoryId, search);
   }
 }
