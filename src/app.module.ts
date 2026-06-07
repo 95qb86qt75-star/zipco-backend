@@ -16,7 +16,12 @@ import { OrdersModule } from './orders/orders.module';
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DATABASE_URL,
+      url: process.env.DATABASE_URL || undefined,
+      host: process.env.DATABASE_URL ? undefined : 'localhost',
+      port: process.env.DATABASE_URL ? undefined : 5432,
+      username: process.env.DATABASE_URL ? undefined : 'postgres',
+      password: process.env.DATABASE_URL ? undefined : 'Bonat01$',
+      database: process.env.DATABASE_URL ? undefined : 'zipco',
       entities: [Business, Category, Order, User],
       synchronize: true,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
