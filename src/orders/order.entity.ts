@@ -29,6 +29,9 @@ export class Order {
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   total: number;
 
+  @Column({ nullable: true })
+  referencePhoto: string;
+
   @Column({ default: 'pending' })
   status: string;
 
