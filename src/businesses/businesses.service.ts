@@ -1,14 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business } from './business.entity';
 
 @Injectable()
-export class BusinessesService {
+export class BusinessesService implements OnModuleInit {
   constructor(
     @InjectRepository(Business)
     private businessRepository: Repository<Business>,
   ) {}
+
+  async onModuleInit() {
+    await this.businessRepository.query('CREATE EXTENSION IF NOT EXISTS unaccent');
+  }
 
   async create(data: Partial<Business>): Promise<Business> {
     const business = this.businessRepository.create(data);
@@ -65,7 +69,7 @@ export class BusinessesService {
 
     if (search) {
       query.andWhere(
-        '(LOWER(business.name) LIKE LOWER(:search) OR LOWER(business.keywords) LIKE LOWER(:search) OR LOWER(business.description) LIKE LOWER(:search))',
+        '(unaccent(LOWER(business.name)) LIKE unaccent(LOWER(:search)) OR unaccent(LOWER(business.keywords)) LIKE unaccent(LOWER(:search)) OR unaccent(LOWER(business.description)) LIKE unaccent(LOWER(:search)))',
         { search: `%${search}%` }
       );
     }
