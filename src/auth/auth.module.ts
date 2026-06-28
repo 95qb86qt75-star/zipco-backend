@@ -4,13 +4,14 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { getJwtSecret } from './jwt-secret';
 import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: 'zipco_secret_key_2025',
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '30d' },
     }),
     UsersModule,
