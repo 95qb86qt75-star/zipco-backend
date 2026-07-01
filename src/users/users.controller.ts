@@ -1,4 +1,17 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { User } from './user.entity';
 
@@ -6,28 +19,56 @@ import { User } from './user.entity';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  private ensureIsAdmin(currentUser?: { role?: string }) {
+    if (currentUser?.role === 'admin') {
+      return;
+    }
+
+    throw new ForbiddenException('No tienes permiso para listar usuarios');
+  }
+
+  private ensureCanAccessUser(targetUserId: number, currentUser?: { id?: number; role?: string }) {
+    if (currentUser?.role === 'admin' || currentUser?.id === targetUserId) {
+      return;
+    }
+
+    throw new ForbiddenException('No tienes permiso para acceder a este usuario');
+  }
+
   @Get()
-  findAll() {
+  @UseGuards(AuthGuard('jwt'))
+  findAll(@Request() req) {
+    this.ensureIsAdmin(req.user);
     return this.usersService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: number) {
+  @UseGuards(AuthGuard('jwt'))
+  findOne(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    this.ensureCanAccessUser(id, req.user);
     return this.usersService.findOne(id);
   }
 
   @Post()
-  create(@Body() data: Partial<User>) {
-    return this.usersService.create(data);
+  @UseGuards(AuthGuard('jwt'))
+  create(@Body() data: Partial<User>, @Request() req) {
+    this.ensureIsAdmin(req.user);
+    const { role, ...safeData } = data;
+    return this.usersService.create(safeData);
   }
 
   @Patch(':id')
-  update(@Param('id') id: number, @Body() data: Partial<User>) {
-    return this.usersService.update(id, data);
+  @UseGuards(AuthGuard('jwt'))
+  update(@Param('id', ParseIntPipe) id: number, @Body() data: Partial<User>, @Request() req) {
+    this.ensureCanAccessUser(id, req.user);
+    const { role, ...safeData } = data;
+    return this.usersService.update(id, safeData);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: number) {
+  @UseGuards(AuthGuard('jwt'))
+  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    this.ensureCanAccessUser(id, req.user);
     return this.usersService.remove(id);
   }
 }
