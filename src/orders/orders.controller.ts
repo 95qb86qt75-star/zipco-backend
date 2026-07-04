@@ -21,7 +21,9 @@ export class OrdersController {
   @UseGuards(AuthGuard('jwt'))
   create(@Body() data: Partial<Order>, @Request() req) {
     const userId = req.user?.id;
-    return this.ordersService.create({ ...data, userId });
+    const { customerName, customerPhone, status, ...safeData } = data;
+
+    return this.ordersService.create({ ...safeData, userId });
   }
 
   @Get('my-orders')

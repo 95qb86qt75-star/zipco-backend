@@ -11,6 +11,12 @@ export class Order {
   @Column()
   userId: number;
 
+  @Column({ nullable: true })
+  customerName: string | null;
+
+  @Column({ nullable: true })
+  customerPhone: string | null;
+
   @Column('text')
   products: string;
 

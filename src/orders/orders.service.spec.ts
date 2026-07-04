@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BusinessesService } from '../businesses/businesses.service';
+import { UsersService } from '../users/users.service';
 import { Order } from './order.entity';
 import { OrdersService } from './orders.service';
 
@@ -15,6 +16,9 @@ describe('OrdersService', () => {
     save: jest.Mock;
   };
   let businessesService: {
+    findOne: jest.Mock;
+  };
+  let usersService: {
     findOne: jest.Mock;
   };
 
@@ -44,6 +48,10 @@ describe('OrdersService', () => {
       findOne: jest.fn(),
     };
 
+    usersService = {
+      findOne: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrdersService,
@@ -55,6 +63,10 @@ describe('OrdersService', () => {
           provide: BusinessesService,
           useValue: businessesService,
         },
+        {
+          provide: UsersService,
+          useValue: usersService,
+        },
       ],
     }).compile();
 
@@ -63,6 +75,67 @@ describe('OrdersService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('create() stores customerName and customerPhone from the real user', async () => {
+    const orderData = {
+      businessId: 20,
+      userId: 10,
+      products: '[]',
+      total: 8000,
+    };
+    const createdOrder = {
+      ...orderData,
+      customerName: 'Bastian',
+      customerPhone: '+56965169255',
+    } as Order;
+
+    usersService.findOne.mockResolvedValue({
+      id: 10,
+      name: 'Bastian',
+      phone: '+56965169255',
+      password: 'hashed-password',
+    });
+    orderRepository.create.mockReturnValue(createdOrder);
+    orderRepository.save.mockResolvedValue(createdOrder);
+
+    await expect(service.create(orderData)).resolves.toEqual(createdOrder);
+
+    expect(usersService.findOne).toHaveBeenCalledWith(10);
+    expect(orderRepository.create).toHaveBeenCalledWith({
+      ...orderData,
+      customerName: 'Bastian',
+      customerPhone: '+56965169255',
+    });
+    expect(orderRepository.save).toHaveBeenCalledWith(createdOrder);
+  });
+
+  it('create() stores null customerName and customerPhone when the user does not exist', async () => {
+    const orderData = {
+      businessId: 20,
+      userId: 999,
+      products: '[]',
+      total: 8000,
+    };
+    const createdOrder = {
+      ...orderData,
+      customerName: null,
+      customerPhone: null,
+    } as Order;
+
+    usersService.findOne.mockResolvedValue(null);
+    orderRepository.create.mockReturnValue(createdOrder);
+    orderRepository.save.mockResolvedValue(createdOrder);
+
+    await expect(service.create(orderData)).resolves.toEqual(createdOrder);
+
+    expect(usersService.findOne).toHaveBeenCalledWith(999);
+    expect(orderRepository.create).toHaveBeenCalledWith({
+      ...orderData,
+      customerName: null,
+      customerPhone: null,
+    });
+    expect(orderRepository.save).toHaveBeenCalledWith(createdOrder);
   });
 
   it("updateStatus() allows the customer to change a pending order to 'cancelled'", async () => {

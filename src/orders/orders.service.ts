@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BusinessesService } from '../businesses/businesses.service';
+import { UsersService } from '../users/users.service';
 import { Order } from './order.entity';
 
 type CurrentUser = {
@@ -22,6 +23,7 @@ export class OrdersService {
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
     private businessesService: BusinessesService,
+    private usersService: UsersService,
   ) {}
 
   private async findOne(id: number): Promise<Order> {
@@ -78,7 +80,22 @@ export class OrdersService {
   }
 
   async create(data: Partial<Order>): Promise<Order> {
-    const order = this.orderRepository.create(data);
+    let customerName: string | null = null;
+    let customerPhone: string | null = null;
+
+    if (data.userId) {
+      const user = await this.usersService.findOne(data.userId);
+
+      customerName = user?.name ?? null;
+      customerPhone = user?.phone ?? null;
+    }
+
+    const order = this.orderRepository.create({
+      ...data,
+      customerName,
+      customerPhone,
+    });
+
     return this.orderRepository.save(order);
   }
 
