@@ -1,17 +1,40 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { BusinessesService } from './businesses.service';
 import { Business } from './business.entity';
-import { AuthGuard } from '@nestjs/passport';
 
 @Controller('businesses')
 export class BusinessesController {
   constructor(private readonly businessesService: BusinessesService) {}
 
+  private ensureIsAdmin(currentUser?: { role?: string }) {
+    if (currentUser?.role === 'admin') {
+      return;
+    }
+
+    throw new ForbiddenException('No tienes permiso para administrar negocios');
+  }
+
   @Post()
   @UseGuards(AuthGuard('jwt'))
   create(@Body() data: Partial<Business>, @Request() req) {
     const userId = req.user?.id;
-    return this.businessesService.create({ ...data, userId });
+    const { status, userId: _ignoredUserId, ...safeData } = data;
+
+    return this.businessesService.create({ ...safeData, userId });
   }
 
   @Get()
@@ -35,30 +58,48 @@ export class BusinessesController {
     return this.businessesService.findNearby(lat, lng, radius, categoryId, search);
   }
 
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  findMine(@Request() req) {
+    return this.businessesService.findByUserId(req.user.id);
+  }
+
   @Get(':id')
-  findOne(@Param('id') id: number) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.businessesService.findOne(id);
   }
 
   @Patch(':id')
   @UseGuards(AuthGuard('jwt'))
-  update(@Param('id') id: number, @Body() data: Partial<Business>, @Request() req) {
-    return this.businessesService.update(id, data);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: Partial<Business>,
+    @Request() req,
+  ) {
+    const { status, userId, categoryId, ...safeData } = data;
+
+    return this.businessesService.update(id, safeData, req.user);
   }
 
   @Delete(':id')
   @UseGuards(AuthGuard('jwt'))
-  remove(@Param('id') id: number) {
-    return this.businessesService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.businessesService.remove(id, req.user);
   }
 
   @Patch(':id/approve')
-  approve(@Param('id') id: number) {
+  @UseGuards(AuthGuard('jwt'))
+  approve(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    this.ensureIsAdmin(req.user);
+
     return this.businessesService.approve(id);
   }
 
   @Patch(':id/reject')
-  reject(@Param('id') id: number) {
+  @UseGuards(AuthGuard('jwt'))
+  reject(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    this.ensureIsAdmin(req.user);
+
     return this.businessesService.reject(id);
   }
 }
