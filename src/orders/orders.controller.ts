@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Order } from './order.entity';
 import { OrdersService } from './orders.service';
@@ -23,13 +33,20 @@ export class OrdersController {
 
   @Get('business/:businessId')
   @UseGuards(AuthGuard('jwt'))
-  findByBusiness(@Param('businessId') businessId: number) {
-    return this.ordersService.findByBusiness(businessId);
+  findByBusiness(
+    @Param('businessId', ParseIntPipe) businessId: number,
+    @Request() req,
+  ) {
+    return this.ordersService.findByBusiness(businessId, req.user);
   }
 
   @Patch(':id/status')
   @UseGuards(AuthGuard('jwt'))
-  updateStatus(@Param('id') id: number, @Body('status') status: string) {
-    return this.ordersService.updateStatus(id, status);
+  updateStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('status') status: string,
+    @Request() req,
+  ) {
+    return this.ordersService.updateStatus(id, status, req.user);
   }
 }
