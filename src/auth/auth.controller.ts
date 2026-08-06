@@ -14,4 +14,21 @@ export class AuthController {
   login(@Body() body: { email: string; password: string }) {
     return this.authService.login(body.email, body.password);
   }
+
+  @Post('request-code')
+  requestCode(@Body('phone') phone: string) {
+    return this.authService.requestCode(phone);
+  }
+
+  @Post('verify-code')
+  verifyCode(@Body() body: { phone: string; code: string }) {
+    return this.authService.verifyCode(body.phone, body.code);
+  }
+
+  @Post('complete-registration')
+  completeRegistration(
+    @Body() body: { phone: string; code: string; name: string },
+  ) {
+    return this.authService.completeRegistration(body.phone, body.code, body.name);
+  }
 }
