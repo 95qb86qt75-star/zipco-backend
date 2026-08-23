@@ -30,9 +30,9 @@ describe('UsersController', () => {
     });
   });
 
-  it('blocks access to another user profile', async () => {
-    await expect(controller.findOne(2, { user: { id: 1, role: 'user' } })).rejects.toThrow(
-      'No tienes permiso para acceder a este usuario',
-    );
+  it('blocks access to another user profile', () => {
+    expect(() =>
+      controller.findOne(2, { user: { id: 1, role: 'user' } }),
+    ).toThrow('No tienes permiso para acceder a este usuario');
   });
 });
