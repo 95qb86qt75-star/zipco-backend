@@ -12,6 +12,7 @@ describe('AuthService', () => {
   let usersService: {
     create: jest.Mock;
     findByEmail: jest.Mock;
+    findByEmailWithPassword: jest.Mock;
   };
   let jwtService: {
     sign: jest.Mock;
@@ -38,6 +39,7 @@ describe('AuthService', () => {
     usersService = {
       create: jest.fn(),
       findByEmail: jest.fn(),
+      findByEmailWithPassword: jest.fn(),
     };
 
     jwtService = {
@@ -85,15 +87,20 @@ describe('AuthService', () => {
   });
 
   it('login() throws the same generic error when the user does not exist', async () => {
-    usersService.findByEmail.mockResolvedValue(null);
+    usersService.findByEmailWithPassword.mockResolvedValue(null);
 
     await expect(
       service.login('missing@example.com', 'password'),
     ).rejects.toThrow('Credenciales inválidas');
+    expect(usersService.findByEmailWithPassword).toHaveBeenCalledWith(
+      'missing@example.com',
+    );
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
+    expect(jwtService.sign).not.toHaveBeenCalled();
   });
 
   it('login() throws the same generic error when the password is incorrect', async () => {
-    usersService.findByEmail.mockResolvedValue({
+    usersService.findByEmailWithPassword.mockResolvedValue({
       ...user,
       password: await bcrypt.hash('correct-password', 10),
     });
@@ -101,10 +108,13 @@ describe('AuthService', () => {
     await expect(service.login(user.email, 'wrong-password')).rejects.toThrow(
       'Credenciales inválidas',
     );
+    expect(usersService.findByEmailWithPassword).toHaveBeenCalledWith(user.email);
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
+    expect(jwtService.sign).not.toHaveBeenCalled();
   });
 
   it('login() returns a JWT when email and password are correct', async () => {
-    usersService.findByEmail.mockResolvedValue({
+    usersService.findByEmailWithPassword.mockResolvedValue({
       ...user,
       password: await bcrypt.hash('correct-password', 10),
     });
@@ -114,7 +124,8 @@ describe('AuthService', () => {
       user,
     });
 
-    expect(usersService.findByEmail).toHaveBeenCalledWith(user.email);
+    expect(usersService.findByEmailWithPassword).toHaveBeenCalledWith(user.email);
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
     expect(jwtService.sign).toHaveBeenCalledWith({
       sub: user.id,
       email: user.email,
