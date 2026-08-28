@@ -35,4 +35,16 @@ describe('UsersController', () => {
       controller.findOne(2, { user: { id: 1, role: 'user' } }),
     ).toThrow('No tienes permiso para acceder a este usuario');
   });
+
+  it('blocks updating another user profile', () => {
+    expect(() =>
+      controller.update(2, {}, { user: { id: 1, role: 'user' } }),
+    ).toThrow('No tienes permiso para acceder a este usuario');
+  });
+
+  it('blocks deleting another user profile', () => {
+    expect(() =>
+      controller.remove(2, { user: { id: 1, role: 'user' } }),
+    ).toThrow('No tienes permiso para acceder a este usuario');
+  });
 });
