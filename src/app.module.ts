@@ -12,17 +12,13 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { VerificationCode } from './auth/verification-code.entity';
 import { OrdersModule } from './orders/orders.module';
+import { getDatabaseUrl } from './database-url';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DATABASE_URL || undefined,
-      host: process.env.DATABASE_URL ? undefined : 'localhost',
-      port: process.env.DATABASE_URL ? undefined : 5432,
-      username: process.env.DATABASE_URL ? undefined : 'postgres',
-      password: process.env.DATABASE_URL ? undefined : 'Bonat01$',
-      database: process.env.DATABASE_URL ? undefined : 'zipco',
+      url: getDatabaseUrl(),
       entities: [Business, Category, Order, User, VerificationCode],
       synchronize: true,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
