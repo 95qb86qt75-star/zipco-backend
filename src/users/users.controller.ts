@@ -14,6 +14,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { User } from './user.entity';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('users')
 export class UsersController {
@@ -59,9 +60,15 @@ export class UsersController {
 
   @Patch(':id')
   @UseGuards(AuthGuard('jwt'))
-  update(@Param('id', ParseIntPipe) id: number, @Body() data: Partial<User>, @Request() req) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() data: UpdateUserDto, @Request() req) {
     this.ensureCanAccessUser(id, req.user);
-    const { role, ...safeData } = data;
+    const { name, location, photo } = data;
+    const safeData: UpdateUserDto = {};
+
+    if (name !== undefined) safeData.name = name;
+    if (location !== undefined) safeData.location = location;
+    if (photo !== undefined) safeData.photo = photo;
+
     return this.usersService.update(id, safeData);
   }
 
