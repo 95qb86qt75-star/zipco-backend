@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business } from './business.entity';
+import { Category } from '../categories/category.entity';
 
 type CurrentUser = {
   id?: number;
@@ -18,6 +20,8 @@ export class BusinessesService implements OnModuleInit {
   constructor(
     @InjectRepository(Business)
     private businessRepository: Repository<Business>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
   ) {}
 
   async onModuleInit() {
@@ -32,7 +36,21 @@ export class BusinessesService implements OnModuleInit {
     throw new ForbiddenException('No tienes permiso para modificar este negocio');
   }
 
+  private async ensureCategoryExists(categoryId?: number): Promise<void> {
+    if (categoryId === undefined) return;
+
+    const categoryExists = await this.categoryRepository.existsBy({
+      id: categoryId,
+    });
+
+    if (!categoryExists) {
+      throw new BadRequestException('La categoría seleccionada no existe.');
+    }
+  }
+
   async create(data: Partial<Business>): Promise<Business> {
+    await this.ensureCategoryExists(data.categoryId);
+
     const business = this.businessRepository.create(data);
     return this.businessRepository.save(business);
   }
@@ -67,6 +85,7 @@ export class BusinessesService implements OnModuleInit {
     const business = await this.findOne(id);
 
     this.ensureCanManageBusiness(business, currentUser);
+    await this.ensureCategoryExists(data.categoryId);
 
     await this.businessRepository.update(id, data);
 

@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Business } from './business.entity';
 import { BusinessesService } from './businesses.service';
+import { Category } from '../categories/category.entity';
 
 describe('BusinessesService', () => {
   let service: BusinessesService;
@@ -14,6 +15,9 @@ describe('BusinessesService', () => {
     find: jest.Mock;
     create: jest.Mock;
     query: jest.Mock;
+  };
+  let categoryRepository: {
+    existsBy: jest.Mock;
   };
 
   const existingBusiness = {
@@ -33,6 +37,9 @@ describe('BusinessesService', () => {
       create: jest.fn(),
       query: jest.fn(),
     };
+    categoryRepository = {
+      existsBy: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -40,6 +47,10 @@ describe('BusinessesService', () => {
         {
           provide: getRepositoryToken(Business),
           useValue: businessRepository,
+        },
+        {
+          provide: getRepositoryToken(Category),
+          useValue: categoryRepository,
         },
       ],
     }).compile();
@@ -51,6 +62,50 @@ describe('BusinessesService', () => {
     expect(service).toBeDefined();
   });
 
+  it('create() rejects a categoryId that does not exist', async () => {
+    categoryRepository.existsBy.mockResolvedValue(false);
+    await expect(
+      service.create({ name: 'Negocio', categoryId: 999, userId: 10 }),
+    ).rejects.toThrow('La categoría seleccionada no existe.');
+    expect(businessRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('create() accepts a categoryId that exists', async () => {
+    const data = { name: 'Negocio', categoryId: 5, userId: 10 };
+    const business = { id: 1, ...data } as Business;
+    categoryRepository.existsBy.mockResolvedValue(true);
+    businessRepository.create.mockReturnValue(business);
+    businessRepository.save.mockResolvedValue(business);
+
+    await expect(service.create(data)).resolves.toEqual(business);
+    expect(categoryRepository.existsBy).toHaveBeenCalledWith({ id: 5 });
+  });
+
+  it('update() rejects a categoryId that does not exist', async () => {
+    businessRepository.findOne.mockResolvedValue(existingBusiness);
+    categoryRepository.existsBy.mockResolvedValue(false);
+    await expect(
+      service.update(1, { categoryId: 999 }, { id: 10, role: 'user' }),
+    ).rejects.toThrow('La categoría seleccionada no existe.');
+    expect(businessRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('update() accepts a categoryId that exists', async () => {
+    const updatedBusiness = { ...existingBusiness, categoryId: 5 } as Business;
+    businessRepository.findOne
+      .mockResolvedValueOnce(existingBusiness)
+      .mockResolvedValueOnce(updatedBusiness);
+    categoryRepository.existsBy.mockResolvedValue(true);
+    businessRepository.update.mockResolvedValue({ affected: 1 });
+
+    await expect(
+      service.update(1, { categoryId: 5 }, { id: 10, role: 'user' }),
+    ).resolves.toEqual(updatedBusiness);
+    expect(businessRepository.update).toHaveBeenCalledWith(1, {
+      categoryId: 5,
+    });
+  });
+
   it('update() throws ForbiddenException when currentUser is not owner and not admin', async () => {
     businessRepository.findOne.mockResolvedValue(existingBusiness);
 
@@ -59,6 +114,14 @@ describe('BusinessesService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(businessRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('checks ownership before category existence', async () => {
+    businessRepository.findOne.mockResolvedValue(existingBusiness);
+    await expect(
+      service.update(1, { categoryId: 999 }, { id: 99, role: 'user' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(categoryRepository.existsBy).not.toHaveBeenCalled();
   });
 
   it('update() works when currentUser is the business owner', async () => {
@@ -96,9 +159,9 @@ describe('BusinessesService', () => {
   it('remove() throws ForbiddenException when currentUser is not owner and not admin', async () => {
     businessRepository.findOne.mockResolvedValue(existingBusiness);
 
-    await expect(service.remove(1, { id: 99, role: 'user' })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.remove(1, { id: 99, role: 'user' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(businessRepository.delete).not.toHaveBeenCalled();
   });
@@ -107,7 +170,9 @@ describe('BusinessesService', () => {
     businessRepository.findOne.mockResolvedValue(existingBusiness);
     businessRepository.delete.mockResolvedValue({ affected: 1 });
 
-    await expect(service.remove(1, { id: 10, role: 'user' })).resolves.toBeUndefined();
+    await expect(
+      service.remove(1, { id: 10, role: 'user' }),
+    ).resolves.toBeUndefined();
 
     expect(businessRepository.delete).toHaveBeenCalledWith(1);
   });
@@ -116,7 +181,9 @@ describe('BusinessesService', () => {
     businessRepository.findOne.mockResolvedValue(existingBusiness);
     businessRepository.delete.mockResolvedValue({ affected: 1 });
 
-    await expect(service.remove(1, { id: 99, role: 'admin' })).resolves.toBeUndefined();
+    await expect(
+      service.remove(1, { id: 99, role: 'admin' }),
+    ).resolves.toBeUndefined();
 
     expect(businessRepository.delete).toHaveBeenCalledWith(1);
   });
@@ -124,6 +191,8 @@ describe('BusinessesService', () => {
   it('findOne() throws NotFoundException when business does not exist', async () => {
     businessRepository.findOne.mockResolvedValue(null);
 
-    await expect(service.findOne(999)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.findOne(999)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

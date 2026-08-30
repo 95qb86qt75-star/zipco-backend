@@ -15,10 +15,41 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessesService } from './businesses.service';
 import { Business } from './business.entity';
+import { CreateBusinessDto } from './dto/create-business.dto';
+import { UpdateBusinessDto } from './dto/update-business.dto';
 
 @Controller('businesses')
 export class BusinessesController {
   constructor(private readonly businessesService: BusinessesService) {}
+
+  private selectEditableFields(
+    data: CreateBusinessDto | UpdateBusinessDto,
+  ): Partial<Business> {
+    const safeData: Partial<Business> = {};
+
+    if (data.name !== undefined) safeData.name = data.name;
+    if (data.description !== undefined) safeData.description = data.description;
+    if (data.type !== undefined) safeData.type = data.type;
+    if (data.address !== undefined) safeData.address = data.address;
+    if (data.latitude !== undefined) safeData.latitude = data.latitude;
+    if (data.longitude !== undefined) safeData.longitude = data.longitude;
+    if (data.phone !== undefined) safeData.phone = data.phone;
+    if (data.email !== undefined) safeData.email = data.email;
+    if (data.photo !== undefined) safeData.photo = data.photo;
+    if (data.keywords !== undefined) safeData.keywords = data.keywords;
+    if (data.category !== undefined) safeData.category = data.category;
+    if (data.categoryId !== undefined) safeData.categoryId = data.categoryId;
+    if (data.schedule !== undefined) safeData.schedule = data.schedule;
+    if (data.instagram !== undefined) safeData.instagram = data.instagram;
+    if (data.facebook !== undefined) safeData.facebook = data.facebook;
+    if (data.products !== undefined) safeData.products = data.products;
+    if (data.isOpen !== undefined) safeData.isOpen = data.isOpen;
+    if (data.showOnlyDistance !== undefined) {
+      safeData.showOnlyDistance = data.showOnlyDistance;
+    }
+
+    return safeData;
+  }
 
   private ensureIsAdmin(currentUser?: { role?: string }) {
     if (currentUser?.role === 'admin') {
@@ -30,9 +61,9 @@ export class BusinessesController {
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
-  create(@Body() data: Partial<Business>, @Request() req) {
+  create(@Body() data: CreateBusinessDto, @Request() req) {
     const userId = req.user?.id;
-    const { status, userId: _ignoredUserId, ...safeData } = data;
+    const safeData = this.selectEditableFields(data);
 
     return this.businessesService.create({ ...safeData, userId });
   }
@@ -73,10 +104,10 @@ export class BusinessesController {
   @UseGuards(AuthGuard('jwt'))
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() data: Partial<Business>,
+    @Body() data: UpdateBusinessDto,
     @Request() req,
   ) {
-    const { status, userId, categoryId, ...safeData } = data;
+    const safeData = this.selectEditableFields(data);
 
     return this.businessesService.update(id, safeData, req.user);
   }
