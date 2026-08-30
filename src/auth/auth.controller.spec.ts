@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
@@ -38,35 +39,38 @@ describe('AuthController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('register() delegates to AuthService', () => {
-    const response = { access_token: 'jwt-token' };
-    authService.register.mockReturnValue(response);
+  it('should return 410 for traditional registration', () => {
+    let error: unknown;
 
-    expect(
-      controller.register({
-        name: 'Bastian',
-        email: 'bastian@example.com',
-        password: 'password',
-      }),
-    ).toBe(response);
-    expect(authService.register).toHaveBeenCalledWith(
-      'Bastian',
-      'bastian@example.com',
-      'password',
+    try {
+      controller.register();
+    } catch (caughtError) {
+      error = caughtError;
+    }
+
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(HttpStatus.GONE);
+    expect((error as HttpException).message).toBe(
+      'Este método de autenticación ya no está disponible. Usa el login por SMS.',
     );
+    expect(authService.register).not.toHaveBeenCalled();
   });
 
-  it('login() delegates to AuthService', () => {
-    const response = { access_token: 'jwt-token' };
-    authService.login.mockReturnValue(response);
+  it('should return 410 for traditional login', () => {
+    let error: unknown;
 
-    expect(
-      controller.login({
-        email: 'bastian@example.com',
-        password: 'password',
-      }),
-    ).toBe(response);
-    expect(authService.login).toHaveBeenCalledWith('bastian@example.com', 'password');
+    try {
+      controller.login();
+    } catch (caughtError) {
+      error = caughtError;
+    }
+
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(HttpStatus.GONE);
+    expect((error as HttpException).message).toBe(
+      'Este método de autenticación ya no está disponible. Usa el login por SMS.',
+    );
+    expect(authService.login).not.toHaveBeenCalled();
   });
 
   it('requestCode() delegates to AuthService', () => {
