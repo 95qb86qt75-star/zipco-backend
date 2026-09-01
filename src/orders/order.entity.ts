@@ -41,6 +41,9 @@ export class Order {
   @Column({ default: 'pending' })
   status: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  cancellationReason: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }
