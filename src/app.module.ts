@@ -20,8 +20,11 @@ import { getDatabaseUrl } from './database-url';
       type: 'postgres',
       url: getDatabaseUrl(),
       entities: [Business, Category, Order, User, VerificationCode],
-      synchronize: true,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      synchronize: false,
+      ssl:
+        process.env.NODE_ENV === 'production'
+          ? { rejectUnauthorized: false }
+          : false,
     }),
     BusinessesModule,
     CategoriesModule,

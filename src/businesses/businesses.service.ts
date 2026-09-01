@@ -3,7 +3,6 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,7 +15,7 @@ type CurrentUser = {
 };
 
 @Injectable()
-export class BusinessesService implements OnModuleInit {
+export class BusinessesService {
   constructor(
     @InjectRepository(Business)
     private businessRepository: Repository<Business>,
@@ -24,16 +23,17 @@ export class BusinessesService implements OnModuleInit {
     private categoryRepository: Repository<Category>,
   ) {}
 
-  async onModuleInit() {
-    await this.businessRepository.query('CREATE EXTENSION IF NOT EXISTS unaccent');
-  }
-
-  private ensureCanManageBusiness(business: Business, currentUser?: CurrentUser) {
+  private ensureCanManageBusiness(
+    business: Business,
+    currentUser?: CurrentUser,
+  ) {
     if (currentUser?.role === 'admin' || business.userId === currentUser?.id) {
       return;
     }
 
-    throw new ForbiddenException('No tienes permiso para modificar este negocio');
+    throw new ForbiddenException(
+      'No tienes permiso para modificar este negocio',
+    );
   }
 
   private async ensureCategoryExists(categoryId?: number): Promise<void> {

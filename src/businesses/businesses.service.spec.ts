@@ -14,7 +14,6 @@ describe('BusinessesService', () => {
     save: jest.Mock;
     find: jest.Mock;
     create: jest.Mock;
-    query: jest.Mock;
   };
   let categoryRepository: {
     existsBy: jest.Mock;
@@ -35,7 +34,6 @@ describe('BusinessesService', () => {
       save: jest.fn(),
       find: jest.fn(),
       create: jest.fn(),
-      query: jest.fn(),
     };
     categoryRepository = {
       existsBy: jest.fn(),
