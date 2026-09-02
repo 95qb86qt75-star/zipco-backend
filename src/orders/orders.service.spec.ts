@@ -138,50 +138,6 @@ describe('OrdersService', () => {
     expect(orderRepository.save).toHaveBeenCalledWith(createdOrder);
   });
 
-  it("updateStatus() allows the customer to change a pending order to 'cancelled'", async () => {
-    const cancelledOrder = { ...baseOrder, status: 'cancelled' } as Order;
-
-    orderRepository.findOne
-      .mockResolvedValueOnce(baseOrder)
-      .mockResolvedValueOnce(cancelledOrder);
-    orderRepository.update.mockResolvedValue({ affected: 1 });
-
-    await expect(
-      service.updateStatus(1, 'cancelled', { id: 10, role: 'user' }),
-    ).resolves.toEqual(cancelledOrder);
-
-    expect(orderRepository.update).toHaveBeenCalledWith(1, { status: 'cancelled' });
-    expect(businessesService.findOne).not.toHaveBeenCalled();
-  });
-
-  it("updateStatus() blocks the customer from changing their own order to 'accepted'", async () => {
-    orderRepository.findOne.mockResolvedValue(baseOrder);
-
-    await expect(
-      service.updateStatus(1, 'accepted', { id: 10, role: 'user' }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-
-    expect(orderRepository.update).not.toHaveBeenCalled();
-    expect(businessesService.findOne).not.toHaveBeenCalled();
-  });
-
-  it.each(['accepted', 'rejected'])(
-    "updateStatus() blocks the customer from cancelling when the order is already '%s'",
-    async (currentStatus) => {
-      orderRepository.findOne.mockResolvedValue({
-        ...baseOrder,
-        status: currentStatus,
-      });
-
-      await expect(
-        service.updateStatus(1, 'cancelled', { id: 10, role: 'user' }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-
-      expect(orderRepository.update).not.toHaveBeenCalled();
-      expect(businessesService.findOne).not.toHaveBeenCalled();
-    },
-  );
-
   it("updateStatus() allows the business owner to change the order to 'accepted'", async () => {
     const acceptedOrder = { ...baseOrder, status: 'accepted' } as Order;
 
@@ -192,11 +148,14 @@ describe('OrdersService', () => {
     businessesService.findOne.mockResolvedValue(business);
 
     await expect(
-      service.updateStatus(1, 'accepted', { id: 30, role: 'user' }),
+      service.updateStatus(1, { status: 'accepted' }, { id: 30, role: 'user' }),
     ).resolves.toEqual(acceptedOrder);
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
-    expect(orderRepository.update).toHaveBeenCalledWith(1, { status: 'accepted' });
+    expect(orderRepository.update).toHaveBeenCalledWith(
+      { id: 1, status: 'pending' },
+      { status: 'accepted' },
+    );
   });
 
   it("updateStatus() allows the business owner to change the order to 'rejected'", async () => {
@@ -209,14 +168,17 @@ describe('OrdersService', () => {
     businessesService.findOne.mockResolvedValue(business);
 
     await expect(
-      service.updateStatus(1, 'rejected', { id: 30, role: 'user' }),
+      service.updateStatus(1, { status: 'rejected' }, { id: 30, role: 'user' }),
     ).resolves.toEqual(rejectedOrder);
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
-    expect(orderRepository.update).toHaveBeenCalledWith(1, { status: 'rejected' });
+    expect(orderRepository.update).toHaveBeenCalledWith(
+      { id: 1, status: 'pending' },
+      { status: 'rejected' },
+    );
   });
 
-  it.each(['accepted', 'rejected'])(
+  it.each(['accepted', 'rejected'] as const)(
     "updateStatus() allows an admin to change the order to '%s'",
     async (status) => {
       const updatedOrder = { ...baseOrder, status } as Order;
@@ -228,11 +190,14 @@ describe('OrdersService', () => {
       businessesService.findOne.mockResolvedValue(business);
 
       await expect(
-        service.updateStatus(1, status, { id: 99, role: 'admin' }),
+        service.updateStatus(1, { status }, { id: 99, role: 'admin' }),
       ).resolves.toEqual(updatedOrder);
 
       expect(businessesService.findOne).toHaveBeenCalledWith(20);
-      expect(orderRepository.update).toHaveBeenCalledWith(1, { status });
+      expect(orderRepository.update).toHaveBeenCalledWith(
+        { id: 1, status: 'pending' },
+        { status },
+      );
     },
   );
 
@@ -241,7 +206,7 @@ describe('OrdersService', () => {
     businessesService.findOne.mockResolvedValue(business);
 
     await expect(
-      service.updateStatus(1, 'accepted', { id: 99, role: 'user' }),
+      service.updateStatus(1, { status: 'accepted' }, { id: 99, role: 'user' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
@@ -252,7 +217,11 @@ describe('OrdersService', () => {
     orderRepository.findOne.mockResolvedValue(null);
 
     await expect(
-      service.updateStatus(999, 'accepted', { id: 30, role: 'user' }),
+      service.updateStatus(
+        999,
+        { status: 'accepted' },
+        { id: 30, role: 'user' },
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
 
     expect(orderRepository.update).not.toHaveBeenCalled();

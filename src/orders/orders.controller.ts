@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Order } from './order.entity';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -46,9 +47,15 @@ export class OrdersController {
   @UseGuards(AuthGuard('jwt'))
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body('status') status: string,
+    @Body() data: UpdateOrderStatusDto,
     @Request() req,
   ) {
-    return this.ordersService.updateStatus(id, status, req.user);
+    const { status, cancellationReason } = data;
+
+    return this.ordersService.updateStatus(
+      id,
+      { status, cancellationReason },
+      req.user,
+    );
   }
 }

@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,15 +9,41 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BusinessesService } from '../businesses/businesses.service';
 import { UsersService } from '../users/users.service';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Order } from './order.entity';
+import {
+  CANCELLATION_REASONS,
+  CancellationReason,
+  ORDER_STATUSES,
+  OrderStatus,
+} from './order-status';
 
 type CurrentUser = {
   id?: number;
   role?: string;
 };
 
-const CUSTOMER_ALLOWED_STATUS = 'cancelled';
-const BUSINESS_ALLOWED_STATUSES = ['accepted', 'rejected'];
+type OrderActor = 'customer' | 'business' | 'admin';
+
+const ALLOWED_TRANSITIONS: Record<
+  OrderStatus,
+  Partial<Record<OrderStatus, OrderActor[]>>
+> = {
+  pending: {
+    accepted: ['business', 'admin'],
+    rejected: ['business', 'admin'],
+    cancelled: ['customer'],
+  },
+  accepted: {
+    ready: ['business'],
+  },
+  ready: {
+    completed: ['customer', 'business'],
+  },
+  rejected: {},
+  cancelled: {},
+  completed: {},
+};
 
 @Injectable()
 export class OrdersService {
@@ -46,37 +74,81 @@ export class OrdersService {
       return;
     }
 
-    throw new ForbiddenException('No tienes permiso para ver los pedidos de este negocio');
+    throw new ForbiddenException(
+      'No tienes permiso para ver los pedidos de este negocio',
+    );
   }
 
-  private async ensureCanUpdateStatus(
+  private isOrderStatus(status: string): status is OrderStatus {
+    return ORDER_STATUSES.includes(status as OrderStatus);
+  }
+
+  private isCancellationReason(reason?: string): reason is CancellationReason {
+    return CANCELLATION_REASONS.includes(reason as CancellationReason);
+  }
+
+  private async getOrderActors(
     order: Order,
-    status: string,
     currentUser?: CurrentUser,
-  ) {
-    const isCustomer = order.userId === currentUser?.id;
-
-    if (isCustomer) {
-      if (status === CUSTOMER_ALLOWED_STATUS && order.status === 'pending') {
-        return;
-      }
-
-      throw new ForbiddenException('No tienes permiso para cambiar este pedido a ese estado');
-    }
-
+  ): Promise<OrderActor[]> {
     const business = await this.businessesService.findOne(order.businessId);
-    const isBusinessOwner = business.userId === currentUser?.id;
-    const isAdmin = currentUser?.role === 'admin';
+    const actors: OrderActor[] = [];
 
-    if (isBusinessOwner || isAdmin) {
-      if (BUSINESS_ALLOWED_STATUSES.includes(status)) {
-        return;
-      }
+    if (order.userId === currentUser?.id) actors.push('customer');
+    if (business.userId === currentUser?.id) actors.push('business');
+    if (currentUser?.role === 'admin') actors.push('admin');
 
-      throw new ForbiddenException('No tienes permiso para cambiar este pedido a ese estado');
+    if (actors.length === 0) {
+      throw new ForbiddenException(
+        'No tienes permiso para modificar este pedido',
+      );
     }
 
-    throw new ForbiddenException('No tienes permiso para modificar este pedido');
+    return actors;
+  }
+
+  private async validateStatusTransition(
+    order: Order,
+    newStatus: string,
+    cancellationReason: string | undefined,
+    currentUser?: CurrentUser,
+  ): Promise<CancellationReason | undefined> {
+    const actors = await this.getOrderActors(order, currentUser);
+
+    if (!this.isOrderStatus(newStatus)) {
+      throw new BadRequestException('El estado solicitado no es válido');
+    }
+
+    if (!this.isOrderStatus(order.status)) {
+      throw new BadRequestException(
+        `El pedido tiene un estado actual no válido: ${order.status}`,
+      );
+    }
+
+    const allowedActors = ALLOWED_TRANSITIONS[order.status][newStatus];
+    if (!allowedActors) {
+      throw new BadRequestException(
+        `Transición inválida de ${order.status} a ${newStatus}`,
+      );
+    }
+
+    if (!actors.some((actor) => allowedActors.includes(actor))) {
+      throw new ForbiddenException(
+        'No tienes permiso para realizar esta acción',
+      );
+    }
+
+    if (newStatus === 'cancelled') {
+      if (!this.isCancellationReason(cancellationReason)) {
+        throw new BadRequestException(
+          'Debes indicar un motivo de cancelación válido',
+        );
+      }
+
+      return cancellationReason;
+    }
+
+    return undefined;
   }
 
   async create(data: Partial<Order>): Promise<Order> {
@@ -120,14 +192,32 @@ export class OrdersService {
 
   async updateStatus(
     id: number,
-    status: string,
+    data: UpdateOrderStatusDto,
     currentUser?: CurrentUser,
   ): Promise<Order> {
     const order = await this.findOne(id);
+    const cancellationReason = await this.validateStatusTransition(
+      order,
+      data.status,
+      data.cancellationReason,
+      currentUser,
+    );
+    const updateData: Partial<Order> = { status: data.status };
 
-    await this.ensureCanUpdateStatus(order, status, currentUser);
+    if (data.status === 'cancelled') {
+      updateData.cancellationReason = cancellationReason ?? null;
+    }
 
-    await this.orderRepository.update(id, { status });
+    const result = await this.orderRepository.update(
+      { id, status: order.status },
+      updateData,
+    );
+
+    if (result.affected !== 1) {
+      throw new ConflictException(
+        'El pedido cambió mientras realizabas esta acción. Actualiza e intenta nuevamente.',
+      );
+    }
 
     return this.findOne(id);
   }
