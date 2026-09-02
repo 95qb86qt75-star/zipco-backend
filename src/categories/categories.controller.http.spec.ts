@@ -2,9 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { getJwtSecret } from '../auth/jwt-secret';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { User } from '../users/user.entity';
 import { CategoriesController } from './categories.controller';
 import { CategoriesService } from './categories.service';
 
@@ -16,6 +18,7 @@ describe('CategoriesController HTTP authorization', () => {
     create: jest.Mock;
     seedCategories: jest.Mock;
   };
+  let userRepository: { findOne: jest.Mock };
 
   beforeAll(async () => {
     categoriesService = {
@@ -25,6 +28,7 @@ describe('CategoriesController HTTP authorization', () => {
         .mockImplementation((data) => Promise.resolve({ id: 1, ...data })),
       seedCategories: jest.fn().mockResolvedValue(undefined),
     };
+    userRepository = { findOne: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [
@@ -35,6 +39,7 @@ describe('CategoriesController HTTP authorization', () => {
       providers: [
         JwtStrategy,
         { provide: CategoriesService, useValue: categoriesService },
+        { provide: getRepositoryToken(User), useValue: userRepository },
       ],
     }).compile();
 
@@ -45,6 +50,7 @@ describe('CategoriesController HTTP authorization', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    userRepository.findOne.mockResolvedValue({ id: 10, role: 'user' });
   });
 
   afterAll(async () => {
@@ -85,10 +91,11 @@ describe('CategoriesController HTTP authorization', () => {
 
   it('allows an admin to create a category', async () => {
     const category = { name: 'Comida', icon: '🍽️' };
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'admin' });
 
     await request(app.getHttpServer())
       .post('/categories')
-      .set('Authorization', `Bearer ${tokenFor(99, 'admin')}`)
+      .set('Authorization', `Bearer ${tokenFor(99, 'user')}`)
       .send(category)
       .expect(201, { id: 1, ...category });
 
@@ -96,11 +103,24 @@ describe('CategoriesController HTTP authorization', () => {
   });
 
   it('allows an admin to seed categories', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'admin' });
+
     await request(app.getHttpServer())
       .post('/categories/seed')
-      .set('Authorization', `Bearer ${tokenFor(99, 'admin')}`)
+      .set('Authorization', `Bearer ${tokenFor(99, 'user')}`)
       .expect(201);
 
     expect(categoriesService.seedCategories).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a stale admin token after the database role is removed', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'user' });
+
+    await request(app.getHttpServer())
+      .post('/categories/seed')
+      .set('Authorization', `Bearer ${tokenFor(99, 'admin')}`)
+      .expect(403);
+
+    expect(categoriesService.seedCategories).not.toHaveBeenCalled();
   });
 });
