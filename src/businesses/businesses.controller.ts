@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -22,9 +23,35 @@ import { UpdateBusinessDto } from './dto/update-business.dto';
 export class BusinessesController {
   constructor(private readonly businessesService: BusinessesService) {}
 
+  private parseFiniteNumber(value: unknown): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return null;
+    }
+
+    if (
+      typeof value === 'string' &&
+      (value.trim() === '' || value.trim().toLowerCase() === 'null')
+    ) {
+      return null;
+    }
+
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+  }
+
   private selectEditableFields(
-    data: CreateBusinessDto | UpdateBusinessDto,
+    data: CreateBusinessDto | UpdateBusinessDto | undefined,
   ): Partial<Business> {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new BadRequestException(
+        'El cuerpo de la solicitud es obligatorio y debe ser JSON válido',
+      );
+    }
+
     const safeData: Partial<Business> = {};
 
     if (data.name !== undefined) safeData.name = data.name;
@@ -80,13 +107,38 @@ export class BusinessesController {
 
   @Get('nearby')
   findNearby(
-    @Query('lat') lat: number,
-    @Query('lng') lng: number,
-    @Query('radius') radius: number,
+    @Query('lat') lat: unknown,
+    @Query('lng') lng: unknown,
+    @Query('radius') radius: unknown,
     @Query('categoryId') categoryId?: number,
     @Query('search') search?: string,
   ) {
-    return this.businessesService.findNearby(lat, lng, radius, categoryId, search);
+    const parsedLat = this.parseFiniteNumber(lat);
+    const parsedLng = this.parseFiniteNumber(lng);
+    const parsedRadius = this.parseFiniteNumber(radius);
+
+    if (
+      parsedLat === null ||
+      parsedLng === null ||
+      parsedLat < -90 ||
+      parsedLat > 90 ||
+      parsedLng < -180 ||
+      parsedLng > 180
+    ) {
+      throw new BadRequestException('Ubicación inválida');
+    }
+
+    if (parsedRadius === null || parsedRadius <= 0) {
+      throw new BadRequestException('Radio de búsqueda inválido');
+    }
+
+    return this.businessesService.findNearby(
+      parsedLat,
+      parsedLng,
+      parsedRadius,
+      categoryId,
+      search,
+    );
   }
 
   @Get('me')

@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Business } from './business.entity';
 import { BusinessesController } from './businesses.controller';
@@ -10,7 +10,7 @@ describe('BusinessesController', () => {
   let controller: BusinessesController;
   let businessesService: Pick<
     BusinessesService,
-    'approve' | 'reject' | 'create' | 'update'
+    'approve' | 'reject' | 'create' | 'update' | 'findNearby'
   >;
 
   const approvedBusiness = {
@@ -31,6 +31,7 @@ describe('BusinessesController', () => {
       reject: jest.fn().mockResolvedValue(rejectedBusiness),
       create: jest.fn(),
       update: jest.fn(),
+      findNearby: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -80,6 +81,96 @@ describe('BusinessesController', () => {
       1,
       { name: 'Bicicletas Maria', categoryId: 5 },
       { id: 10, role: 'user' },
+    );
+  });
+
+  it('update() accepts a partial body containing only coordinates', () => {
+    const coordinates: UpdateBusinessDto = {
+      latitude: -33.44786417742657,
+      longitude: -70.63958429053734,
+    };
+
+    controller.update(50, coordinates, {
+      user: { id: 35, role: 'user' },
+    });
+
+    expect(businessesService.update).toHaveBeenCalledWith(50, coordinates, {
+      id: 35,
+      role: 'user',
+    });
+  });
+
+  it('create() rejects a missing body with a clear 400 error', () => {
+    expect(() =>
+      controller.create(undefined as unknown as CreateBusinessDto, {
+        user: { id: 35, role: 'user' },
+      }),
+    ).toThrow(BadRequestException);
+
+    expect(businessesService.create).not.toHaveBeenCalled();
+  });
+
+  it('update() rejects a missing body with a clear 400 error', () => {
+    expect(() =>
+      controller.update(50, undefined as unknown as UpdateBusinessDto, {
+        user: { id: 35, role: 'user' },
+      }),
+    ).toThrow(BadRequestException);
+
+    expect(businessesService.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['null', '-70.6395', '10'],
+    ['-33.4478', 'null', '10'],
+    ['', '-70.6395', '10'],
+    ['NaN', '-70.6395', '10'],
+    ['Infinity', '-70.6395', '10'],
+    ['200', '-70.6395', '10'],
+    ['-33.4478', '-200', '10'],
+  ])(
+    'findNearby() rejects invalid coordinates lat=%s lng=%s',
+    (lat, lng, radius) => {
+      expect(() =>
+        controller.findNearby(lat, lng, radius, undefined, 'Zipco'),
+      ).toThrow('Ubicación inválida');
+
+      expect(businessesService.findNearby).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['0', '-1', 'null', 'abc', 'Infinity'])(
+    'findNearby() rejects invalid radius %s',
+    (radius) => {
+      expect(() =>
+        controller.findNearby(
+          '-33.4478',
+          '-70.6395',
+          radius,
+          undefined,
+          'Zipco',
+        ),
+      ).toThrow('Radio de búsqueda inválido');
+
+      expect(businessesService.findNearby).not.toHaveBeenCalled();
+    },
+  );
+
+  it('findNearby() converts valid query strings before calling the service', () => {
+    controller.findNearby(
+      '-33.44786417742657',
+      '-70.63958429053734',
+      '10',
+      undefined,
+      'Zipco',
+    );
+
+    expect(businessesService.findNearby).toHaveBeenCalledWith(
+      -33.44786417742657,
+      -70.63958429053734,
+      10,
+      undefined,
+      'Zipco',
     );
   });
 
