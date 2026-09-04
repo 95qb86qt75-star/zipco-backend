@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { User } from '../users/user.entity';
 import { Business } from './business.entity';
 import { BusinessesController } from './businesses.controller';
 import { BusinessesService } from './businesses.service';
@@ -12,6 +14,7 @@ describe('BusinessesController', () => {
     BusinessesService,
     'approve' | 'reject' | 'create' | 'update' | 'findNearby'
   >;
+  let userRepository: { findOne: jest.Mock };
 
   const approvedBusiness = {
     id: 1,
@@ -33,10 +36,16 @@ describe('BusinessesController', () => {
       update: jest.fn(),
       findNearby: jest.fn(),
     };
+    userRepository = {
+      findOne: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BusinessesController],
-      providers: [{ provide: BusinessesService, useValue: businessesService }],
+      providers: [
+        { provide: BusinessesService, useValue: businessesService },
+        { provide: getRepositoryToken(User), useValue: userRepository },
+      ],
     }).compile();
 
     controller = module.get<BusinessesController>(BusinessesController);
@@ -174,15 +183,43 @@ describe('BusinessesController', () => {
     );
   });
 
-  it("approve() throws ForbiddenException when req.user.role is not 'admin'", () => {
-    expect(() =>
-      controller.approve(1, { user: { id: 10, role: 'user' } }),
-    ).toThrow(ForbiddenException);
+  it('approve() rejects a stale admin token when the database role is user', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 10, role: 'user' });
+
+    await expect(
+      controller.approve(1, { user: { id: 10, role: 'admin' } }),
+    ).rejects.toThrow(ForbiddenException);
 
     expect(businessesService.approve).not.toHaveBeenCalled();
   });
 
-  it("approve() calls businessesService.approve(id) when req.user.role is 'admin'", async () => {
+  it('approve() permits a current database admin even if the token says user', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'admin' });
+
+    await expect(
+      controller.approve(1, { user: { id: 99, role: 'user' } }),
+    ).resolves.toEqual(approvedBusiness);
+
+    expect(userRepository.findOne).toHaveBeenCalledWith({
+      where: { id: 99 },
+      select: { id: true, role: true },
+    });
+    expect(businessesService.approve).toHaveBeenCalledWith(1);
+  });
+
+  it('approve() rejects an authenticated user missing from the database', async () => {
+    userRepository.findOne.mockResolvedValue(null);
+
+    await expect(
+      controller.approve(1, { user: { id: 404, role: 'admin' } }),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(businessesService.approve).not.toHaveBeenCalled();
+  });
+
+  it('approve() works for a current database admin', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'admin' });
+
     await expect(
       controller.approve(1, { user: { id: 99, role: 'admin' } }),
     ).resolves.toEqual(approvedBusiness);
@@ -190,15 +227,9 @@ describe('BusinessesController', () => {
     expect(businessesService.approve).toHaveBeenCalledWith(1);
   });
 
-  it("reject() throws ForbiddenException when req.user.role is not 'admin'", () => {
-    expect(() =>
-      controller.reject(1, { user: { id: 10, role: 'user' } }),
-    ).toThrow(ForbiddenException);
+  it('reject() works for a current database admin', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'admin' });
 
-    expect(businessesService.reject).not.toHaveBeenCalled();
-  });
-
-  it("reject() calls businessesService.reject(id) when req.user.role is 'admin'", async () => {
     await expect(
       controller.reject(1, { user: { id: 99, role: 'admin' } }),
     ).resolves.toEqual(rejectedBusiness);

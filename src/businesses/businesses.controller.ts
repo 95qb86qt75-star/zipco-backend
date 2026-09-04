@@ -14,6 +14,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
 import { BusinessesService } from './businesses.service';
 import { Business } from './business.entity';
 import { CreateBusinessDto } from './dto/create-business.dto';
@@ -21,7 +24,11 @@ import { UpdateBusinessDto } from './dto/update-business.dto';
 
 @Controller('businesses')
 export class BusinessesController {
-  constructor(private readonly businessesService: BusinessesService) {}
+  constructor(
+    private readonly businessesService: BusinessesService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   private parseFiniteNumber(value: unknown): number | null {
     if (value === null || value === undefined) {
@@ -78,7 +85,18 @@ export class BusinessesController {
     return safeData;
   }
 
-  private ensureIsAdmin(currentUser?: { role?: string }) {
+  private async ensureIsAdmin(userId?: number): Promise<void> {
+    if (!userId) {
+      throw new ForbiddenException(
+        'No tienes permiso para administrar negocios',
+      );
+    }
+
+    const currentUser = await this.userRepository.findOne({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+
     if (currentUser?.role === 'admin') {
       return;
     }
@@ -172,16 +190,16 @@ export class BusinessesController {
 
   @Patch(':id/approve')
   @UseGuards(AuthGuard('jwt'))
-  approve(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    this.ensureIsAdmin(req.user);
+  async approve(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    await this.ensureIsAdmin(req.user?.id);
 
     return this.businessesService.approve(id);
   }
 
   @Patch(':id/reject')
   @UseGuards(AuthGuard('jwt'))
-  reject(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    this.ensureIsAdmin(req.user);
+  async reject(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    await this.ensureIsAdmin(req.user?.id);
 
     return this.businessesService.reject(id);
   }
