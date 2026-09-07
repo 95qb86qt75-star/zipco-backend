@@ -1,7 +1,10 @@
+import { assertSafeDevDatabaseUrl } from './dev/dev-environment';
+
 export function getDatabaseUrl(): string {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (databaseUrl) {
+    assertSafeDevDatabaseUrl(databaseUrl);
     return databaseUrl;
   }
 

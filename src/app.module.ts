@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { VerificationCode } from './auth/verification-code.entity';
 import { OrdersModule } from './orders/orders.module';
 import { getDatabaseUrl } from './database-url';
+import { DevAuthModule } from './dev/dev-auth.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { getDatabaseUrl } from './database-url';
     UsersModule,
     AuthModule,
     OrdersModule,
+    DevAuthModule.register(),
   ],
   controllers: [AppController],
   providers: [AppService],

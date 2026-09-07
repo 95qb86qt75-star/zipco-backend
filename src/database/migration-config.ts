@@ -1,3 +1,5 @@
+import { assertSafeDevDatabaseUrl } from '../dev/dev-environment';
+
 export type MigrationDatabaseConfig = {
   url: string;
   ssl: false | { rejectUnauthorized: false };
@@ -12,6 +14,8 @@ export function getMigrationDatabaseConfig(
       'MIGRATION_DATABASE_URL es obligatorio para ejecutar comandos de migración.',
     );
   }
+
+  assertSafeDevDatabaseUrl(url, env);
 
   const sslValue = env.MIGRATION_DATABASE_SSL?.trim().toLowerCase();
   if (sslValue !== 'true' && sslValue !== 'false') {
