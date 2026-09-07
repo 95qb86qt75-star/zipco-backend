@@ -13,7 +13,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   await assertDevDatabaseMarker(app.get(DataSource));
   app.enableCors({
-    origin: ['http://localhost:5173', 'https://zipco-app.vercel.app'],
+    origin: [
+      'http://127.0.0.1:5173',
+      'http://localhost:5173',
+      'https://zipco-app.vercel.app',
+    ],
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     credentials: true,
   });
