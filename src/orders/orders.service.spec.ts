@@ -90,6 +90,7 @@ describe('OrdersService', () => {
       customerPhone: '+56965169255',
     } as Order;
 
+    businessesService.findOne.mockResolvedValue(business);
     usersService.findOne.mockResolvedValue({
       id: 10,
       name: 'Bastian',
@@ -101,6 +102,7 @@ describe('OrdersService', () => {
 
     await expect(service.create(orderData)).resolves.toEqual(createdOrder);
 
+    expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(usersService.findOne).toHaveBeenCalledWith(10);
     expect(orderRepository.create).toHaveBeenCalledWith({
       ...orderData,
@@ -123,12 +125,14 @@ describe('OrdersService', () => {
       customerPhone: null,
     } as Order;
 
+    businessesService.findOne.mockResolvedValue(business);
     usersService.findOne.mockResolvedValue(null);
     orderRepository.create.mockReturnValue(createdOrder);
     orderRepository.save.mockResolvedValue(createdOrder);
 
     await expect(service.create(orderData)).resolves.toEqual(createdOrder);
 
+    expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(usersService.findOne).toHaveBeenCalledWith(999);
     expect(orderRepository.create).toHaveBeenCalledWith({
       ...orderData,
@@ -136,6 +140,26 @@ describe('OrdersService', () => {
       customerPhone: null,
     });
     expect(orderRepository.save).toHaveBeenCalledWith(createdOrder);
+  });
+
+  it('create() blocks an order placed by the owner of the business', async () => {
+    const orderData = {
+      businessId: 20,
+      userId: 30,
+      products: '[]',
+      total: 8000,
+    };
+
+    businessesService.findOne.mockResolvedValue(business);
+
+    await expect(service.create(orderData)).rejects.toThrow(
+      new ForbiddenException('No puedes realizar pedidos en tu propio negocio'),
+    );
+
+    expect(businessesService.findOne).toHaveBeenCalledWith(20);
+    expect(usersService.findOne).not.toHaveBeenCalled();
+    expect(orderRepository.create).not.toHaveBeenCalled();
+    expect(orderRepository.save).not.toHaveBeenCalled();
   });
 
   it("updateStatus() allows the business owner to change the order to 'accepted'", async () => {

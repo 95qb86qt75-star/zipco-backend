@@ -183,6 +183,17 @@ describe('BusinessesController', () => {
     );
   });
 
+  it('findNearby() preserves the canonical owner userId in its response', async () => {
+    const result = [{ ...approvedBusiness, userId: 10 }];
+    jest.mocked(businessesService.findNearby).mockResolvedValue(result);
+
+    await expect(
+      controller.findNearby('-33.4478', '-70.6395', '10'),
+    ).resolves.toEqual(result);
+
+    expect(result[0].userId).toBe(10);
+  });
+
   it('approve() rejects a stale admin token when the database role is user', async () => {
     userRepository.findOne.mockResolvedValue({ id: 10, role: 'user' });
 

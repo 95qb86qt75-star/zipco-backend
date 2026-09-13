@@ -155,6 +155,16 @@ export class OrdersService {
     let customerName: string | null = null;
     let customerPhone: string | null = null;
 
+    if (data.businessId && data.userId) {
+      const business = await this.businessesService.findOne(data.businessId);
+
+      if (business.userId === data.userId) {
+        throw new ForbiddenException(
+          'No puedes realizar pedidos en tu propio negocio',
+        );
+      }
+    }
+
     if (data.userId) {
       const user = await this.usersService.findOne(data.userId);
 

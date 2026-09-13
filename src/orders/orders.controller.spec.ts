@@ -4,10 +4,10 @@ import { OrdersService } from './orders.service';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
-  let ordersService: { updateStatus: jest.Mock };
+  let ordersService: { create: jest.Mock; updateStatus: jest.Mock };
 
   beforeEach(async () => {
-    ordersService = { updateStatus: jest.fn() };
+    ordersService = { create: jest.fn(), updateStatus: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
@@ -19,6 +19,32 @@ describe('OrdersController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('create() always uses the authenticated user id', async () => {
+    const body = {
+      businessId: 20,
+      userId: 999,
+      products: '[]',
+      total: 8000,
+      customerName: 'Nombre manipulado',
+      customerPhone: '+56900000000',
+      status: 'completed',
+    };
+    const createdOrder = { id: 1, businessId: 20, userId: 10 };
+
+    ordersService.create.mockResolvedValue(createdOrder);
+
+    await expect(
+      controller.create(body as never, { user: { id: 10, role: 'user' } }),
+    ).resolves.toEqual(createdOrder);
+
+    expect(ordersService.create).toHaveBeenCalledWith({
+      businessId: 20,
+      products: '[]',
+      total: 8000,
+      userId: 10,
+    });
   });
 
   it('passes only status and cancellationReason to the service', async () => {
