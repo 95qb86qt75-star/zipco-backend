@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm'; 
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { CatalogItem } from '../catalog/catalog-item.entity';
 
 @Entity()
 export class Business {
@@ -64,6 +71,9 @@ export class Business {
 
   @Column()
   userId: number;
+
+  @OneToMany(() => CatalogItem, (catalogItem) => catalogItem.business)
+  catalogItems: CatalogItem[];
 
   @CreateDateColumn()
   createdAt: Date;

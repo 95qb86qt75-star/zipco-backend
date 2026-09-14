@@ -14,13 +14,21 @@ import { VerificationCode } from './auth/verification-code.entity';
 import { OrdersModule } from './orders/orders.module';
 import { getDatabaseUrl } from './database-url';
 import { DevAuthModule } from './dev/dev-auth.module';
+import { CatalogItem } from './catalog/catalog-item.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: getDatabaseUrl(),
-      entities: [Business, Category, Order, User, VerificationCode],
+      entities: [
+        Business,
+        CatalogItem,
+        Category,
+        Order,
+        User,
+        VerificationCode,
+      ],
       synchronize: false,
       ssl:
         process.env.NODE_ENV === 'production'
