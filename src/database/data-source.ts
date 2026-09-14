@@ -7,6 +7,7 @@ import { Business } from '../businesses/business.entity';
 import { Category } from '../categories/category.entity';
 import { CatalogItem } from '../catalog/catalog-item.entity';
 import { Order } from '../orders/order.entity';
+import { OrderItem } from '../orders/order-item.entity';
 import { User } from '../users/user.entity';
 import { getMigrationDatabaseConfig } from './migration-config';
 
@@ -16,7 +17,15 @@ export default new DataSource({
   type: 'postgres',
   url: databaseConfig.url,
   ssl: databaseConfig.ssl,
-  entities: [Business, CatalogItem, Category, Order, User, VerificationCode],
+  entities: [
+    Business,
+    CatalogItem,
+    Category,
+    Order,
+    OrderItem,
+    User,
+    VerificationCode,
+  ],
   migrations: [join(__dirname, '..', 'migrations', '*.{ts,js}')],
   migrationsTableName: 'migrations',
   migrationsRun: false,

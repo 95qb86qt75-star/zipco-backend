@@ -1,4 +1,11 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { OrderItem } from './order-item.entity';
 
 @Entity()
 export class Order {
@@ -20,29 +27,32 @@ export class Order {
   @Column('text')
   products: string;
 
-  @Column({ nullable: true })
-  note: string;
+  @Column({ type: 'varchar', nullable: true })
+  note: string | null;
 
   @Column({ default: false })
   needNow: boolean;
 
-  @Column({ nullable: true })
-  deliveryDate: string;
+  @Column({ type: 'varchar', nullable: true })
+  deliveryDate: string | null;
 
-  @Column({ nullable: true })
-  deliveryTime: string;
+  @Column({ type: 'varchar', nullable: true })
+  deliveryTime: string | null;
 
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   total: number;
 
-  @Column({ nullable: true })
-  referencePhoto: string;
+  @Column({ type: 'varchar', nullable: true })
+  referencePhoto: string | null;
 
   @Column({ default: 'pending' })
   status: string;
 
   @Column({ type: 'varchar', nullable: true })
   cancellationReason: string | null;
+
+  @OneToMany(() => OrderItem, (item) => item.order)
+  items: OrderItem[];
 
   @CreateDateColumn()
   createdAt: Date;

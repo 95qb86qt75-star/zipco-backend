@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { BusinessesService } from '../businesses/businesses.service';
 import { UsersService } from '../users/users.service';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -53,6 +54,7 @@ describe('OrdersService status transitions', () => {
         { provide: getRepositoryToken(Order), useValue: orderRepository },
         { provide: BusinessesService, useValue: businessesService },
         { provide: UsersService, useValue: { findOne: jest.fn() } },
+        { provide: DataSource, useValue: { transaction: jest.fn() } },
       ],
     }).compile();
 

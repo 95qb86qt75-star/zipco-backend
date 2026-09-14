@@ -4,13 +4,21 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
+import {
+  CatalogItem,
+  CatalogItemPricingMode,
+} from '../catalog/catalog-item.entity';
+import { Business } from '../businesses/business.entity';
 import { BusinessesService } from '../businesses/businesses.service';
 import { UsersService } from '../users/users.service';
+import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Order } from './order.entity';
+import { OrderItem } from './order-item.entity';
 import {
   CANCELLATION_REASONS,
   CancellationReason,
@@ -45,6 +53,11 @@ const ALLOWED_TRANSITIONS: Record<
   completed: {},
 };
 
+const MAX_ORDER_LINE_SUBTOTAL_CLP = 2_147_483_647;
+const MAX_ORDER_TOTAL_CLP = 9_999_999_999;
+const MAX_ORDER_ITEMS = 20;
+const MAX_ORDER_ITEM_QUANTITY = 99;
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -52,10 +65,14 @@ export class OrdersService {
     private orderRepository: Repository<Order>,
     private businessesService: BusinessesService,
     private usersService: UsersService,
+    private dataSource: DataSource,
   ) {}
 
   private async findOne(id: number): Promise<Order> {
-    const order = await this.orderRepository.findOne({ where: { id } });
+    const order = await this.orderRepository.findOne({
+      where: { id },
+      relations: { items: true },
+    });
 
     if (!order) {
       throw new NotFoundException('Pedido no encontrado');
@@ -151,39 +168,148 @@ export class OrdersService {
     return undefined;
   }
 
-  async create(data: Partial<Order>): Promise<Order> {
-    let customerName: string | null = null;
-    let customerPhone: string | null = null;
+  async create(data: CreateOrderDto, userId?: number): Promise<Order> {
+    if (!Number.isInteger(userId) || (userId ?? 0) <= 0) {
+      throw new UnauthorizedException('Sesion no valida');
+    }
 
-    if (data.businessId && data.userId) {
-      const business = await this.businessesService.findOne(data.businessId);
+    if (
+      !Number.isInteger(data.businessId) ||
+      data.businessId <= 0 ||
+      !Array.isArray(data.items) ||
+      data.items.length === 0 ||
+      data.items.length > MAX_ORDER_ITEMS ||
+      data.items.some(
+        (item) =>
+          !Number.isInteger(item?.catalogItemId) ||
+          item.catalogItemId <= 0 ||
+          !Number.isInteger(item?.quantity) ||
+          item.quantity < 1 ||
+          item.quantity > MAX_ORDER_ITEM_QUANTITY,
+      )
+    ) {
+      throw new BadRequestException('Los articulos del pedido no son validos');
+    }
 
-      if (business.userId === data.userId) {
+    const catalogItemIds = data.items.map((item) => item.catalogItemId);
+    if (new Set(catalogItemIds).size !== catalogItemIds.length) {
+      throw new BadRequestException(
+        'Cada articulo puede aparecer una sola vez en el pedido',
+      );
+    }
+
+    const user = await this.usersService.findOne(userId as number);
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const business = await manager.findOne(Business, {
+        where: { id: data.businessId, status: 'approved' },
+        select: { id: true, userId: true },
+        lock: { mode: 'pessimistic_read' },
+      });
+
+      if (!business) {
+        throw new NotFoundException('Negocio no encontrado');
+      }
+
+      if (business.userId === userId) {
         throw new ForbiddenException(
           'No puedes realizar pedidos en tu propio negocio',
         );
       }
-    }
 
-    if (data.userId) {
-      const user = await this.usersService.findOne(data.userId);
+      const catalogItems = await manager.find(CatalogItem, {
+        where: {
+          id: In(catalogItemIds),
+          businessId: data.businessId,
+          isActive: true,
+          pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+        },
+        lock: { mode: 'pessimistic_read' },
+      });
 
-      customerName = user?.name ?? null;
-      customerPhone = user?.phone ?? null;
-    }
+      if (catalogItems.length !== catalogItemIds.length) {
+        throw new ConflictException(
+          'El catalogo cambio. Actualiza e intenta nuevamente',
+        );
+      }
 
-    const order = this.orderRepository.create({
-      ...data,
-      customerName,
-      customerPhone,
+      const catalogById = new Map(catalogItems.map((item) => [item.id, item]));
+      const lines = data.items.map((requestedItem) => {
+        const catalogItem = catalogById.get(requestedItem.catalogItemId);
+        if (!catalogItem || !Number.isInteger(catalogItem.priceClp)) {
+          throw new ConflictException(
+            'El catalogo cambio. Actualiza e intenta nuevamente',
+          );
+        }
+
+        const subtotalClp =
+          (catalogItem.priceClp as number) * requestedItem.quantity;
+        if (
+          !Number.isSafeInteger(subtotalClp) ||
+          subtotalClp > MAX_ORDER_LINE_SUBTOTAL_CLP
+        ) {
+          throw new BadRequestException(
+            'El subtotal del articulo es demasiado alto',
+          );
+        }
+
+        return {
+          catalogItemId: catalogItem.id,
+          nameSnapshot: catalogItem.name,
+          unitPriceClpSnapshot: catalogItem.priceClp as number,
+          quantity: requestedItem.quantity,
+          subtotalClp,
+        };
+      });
+      const total = lines.reduce((sum, line) => sum + line.subtotalClp, 0);
+
+      if (!Number.isSafeInteger(total) || total > MAX_ORDER_TOTAL_CLP) {
+        throw new BadRequestException('El total del pedido es demasiado alto');
+      }
+
+      const orderRepository = manager.getRepository(Order);
+      const orderItemRepository = manager.getRepository(OrderItem);
+      const order = orderRepository.create({
+        businessId: data.businessId,
+        userId: userId as number,
+        customerName: user.name ?? null,
+        customerPhone: user.phone ?? null,
+        products: JSON.stringify(
+          lines.map((line) => ({
+            name: line.nameSnapshot,
+            price: line.unitPriceClpSnapshot,
+            quantity: line.quantity,
+          })),
+        ),
+        note: data.note ?? null,
+        needNow: data.needNow ?? false,
+        deliveryDate: data.deliveryDate ?? null,
+        deliveryTime: data.deliveryTime ?? null,
+        total,
+        referencePhoto: data.referencePhoto ?? null,
+        status: 'pending',
+        cancellationReason: null,
+      });
+      const savedOrder = await orderRepository.save(order);
+      const orderItems = orderItemRepository.create(
+        lines.map((line) => ({
+          ...line,
+          orderId: savedOrder.id,
+        })),
+      );
+      savedOrder.items = await orderItemRepository.save(orderItems);
+
+      return savedOrder;
     });
-
-    return this.orderRepository.save(order);
   }
 
   async findByUser(userId: number): Promise<Order[]> {
     return this.orderRepository.find({
       where: { userId },
+      relations: { items: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -196,6 +322,7 @@ export class OrdersService {
 
     return this.orderRepository.find({
       where: { businessId },
+      relations: { items: true },
       order: { createdAt: 'DESC' },
     });
   }

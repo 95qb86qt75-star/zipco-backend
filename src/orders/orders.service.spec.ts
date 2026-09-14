@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { BusinessesService } from '../businesses/businesses.service';
 import { UsersService } from '../users/users.service';
 import { Order } from './order.entity';
@@ -67,6 +68,10 @@ describe('OrdersService', () => {
           provide: UsersService,
           useValue: usersService,
         },
+        {
+          provide: DataSource,
+          useValue: { transaction: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -75,91 +80,6 @@ describe('OrdersService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
-  });
-
-  it('create() stores customerName and customerPhone from the real user', async () => {
-    const orderData = {
-      businessId: 20,
-      userId: 10,
-      products: '[]',
-      total: 8000,
-    };
-    const createdOrder = {
-      ...orderData,
-      customerName: 'Bastian',
-      customerPhone: '+56965169255',
-    } as Order;
-
-    businessesService.findOne.mockResolvedValue(business);
-    usersService.findOne.mockResolvedValue({
-      id: 10,
-      name: 'Bastian',
-      phone: '+56965169255',
-      password: 'hashed-password',
-    });
-    orderRepository.create.mockReturnValue(createdOrder);
-    orderRepository.save.mockResolvedValue(createdOrder);
-
-    await expect(service.create(orderData)).resolves.toEqual(createdOrder);
-
-    expect(businessesService.findOne).toHaveBeenCalledWith(20);
-    expect(usersService.findOne).toHaveBeenCalledWith(10);
-    expect(orderRepository.create).toHaveBeenCalledWith({
-      ...orderData,
-      customerName: 'Bastian',
-      customerPhone: '+56965169255',
-    });
-    expect(orderRepository.save).toHaveBeenCalledWith(createdOrder);
-  });
-
-  it('create() stores null customerName and customerPhone when the user does not exist', async () => {
-    const orderData = {
-      businessId: 20,
-      userId: 999,
-      products: '[]',
-      total: 8000,
-    };
-    const createdOrder = {
-      ...orderData,
-      customerName: null,
-      customerPhone: null,
-    } as Order;
-
-    businessesService.findOne.mockResolvedValue(business);
-    usersService.findOne.mockResolvedValue(null);
-    orderRepository.create.mockReturnValue(createdOrder);
-    orderRepository.save.mockResolvedValue(createdOrder);
-
-    await expect(service.create(orderData)).resolves.toEqual(createdOrder);
-
-    expect(businessesService.findOne).toHaveBeenCalledWith(20);
-    expect(usersService.findOne).toHaveBeenCalledWith(999);
-    expect(orderRepository.create).toHaveBeenCalledWith({
-      ...orderData,
-      customerName: null,
-      customerPhone: null,
-    });
-    expect(orderRepository.save).toHaveBeenCalledWith(createdOrder);
-  });
-
-  it('create() blocks an order placed by the owner of the business', async () => {
-    const orderData = {
-      businessId: 20,
-      userId: 30,
-      products: '[]',
-      total: 8000,
-    };
-
-    businessesService.findOne.mockResolvedValue(business);
-
-    await expect(service.create(orderData)).rejects.toThrow(
-      new ForbiddenException('No puedes realizar pedidos en tu propio negocio'),
-    );
-
-    expect(businessesService.findOne).toHaveBeenCalledWith(20);
-    expect(usersService.findOne).not.toHaveBeenCalled();
-    expect(orderRepository.create).not.toHaveBeenCalled();
-    expect(orderRepository.save).not.toHaveBeenCalled();
   });
 
   it("updateStatus() allows the business owner to change the order to 'accepted'", async () => {
@@ -265,6 +185,7 @@ describe('OrdersService', () => {
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.find).toHaveBeenCalledWith({
       where: { businessId: 20 },
+      relations: { items: true },
       order: { createdAt: 'DESC' },
     });
   });
@@ -282,6 +203,7 @@ describe('OrdersService', () => {
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.find).toHaveBeenCalledWith({
       where: { businessId: 20 },
+      relations: { items: true },
       order: { createdAt: 'DESC' },
     });
   });

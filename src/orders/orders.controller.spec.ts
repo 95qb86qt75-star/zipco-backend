@@ -24,12 +24,7 @@ describe('OrdersController', () => {
   it('create() always uses the authenticated user id', async () => {
     const body = {
       businessId: 20,
-      userId: 999,
-      products: '[]',
-      total: 8000,
-      customerName: 'Nombre manipulado',
-      customerPhone: '+56900000000',
-      status: 'completed',
+      items: [{ catalogItemId: 5, quantity: 2 }],
     };
     const createdOrder = { id: 1, businessId: 20, userId: 10 };
 
@@ -39,12 +34,7 @@ describe('OrdersController', () => {
       controller.create(body as never, { user: { id: 10, role: 'user' } }),
     ).resolves.toEqual(createdOrder);
 
-    expect(ordersService.create).toHaveBeenCalledWith({
-      businessId: 20,
-      products: '[]',
-      total: 8000,
-      userId: 10,
-    });
+    expect(ordersService.create).toHaveBeenCalledWith(body, 10);
   });
 
   it('passes only status and cancellationReason to the service', async () => {

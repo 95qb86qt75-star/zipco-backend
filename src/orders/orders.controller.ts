@@ -8,11 +8,14 @@ import {
   Post,
   Request,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Order } from './order.entity';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 @Controller('orders')
 export class OrdersController {
@@ -20,11 +23,15 @@ export class OrdersController {
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
-  create(@Body() data: Partial<Order>, @Request() req) {
-    const userId = req.user?.id;
-    const { customerName, customerPhone, status, ...safeData } = data;
-
-    return this.ordersService.create({ ...safeData, userId });
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  create(@Body() data: CreateOrderDto, @Request() req) {
+    return this.ordersService.create(data, req.user?.id);
   }
 
   @Get('my-orders')
