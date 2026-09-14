@@ -15,6 +15,7 @@ import { OrdersModule } from './orders/orders.module';
 import { getDatabaseUrl } from './database-url';
 import { DevAuthModule } from './dev/dev-auth.module';
 import { CatalogItem } from './catalog/catalog-item.entity';
+import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { CatalogItem } from './catalog/catalog-item.entity';
     UsersModule,
     AuthModule,
     OrdersModule,
+    CatalogModule,
     DevAuthModule.register(),
   ],
   controllers: [AppController],

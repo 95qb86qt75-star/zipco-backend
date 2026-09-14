@@ -18,7 +18,7 @@ async function bootstrap() {
       'http://localhost:5173',
       'https://zipco-app.vercel.app',
     ],
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     credentials: true,
   });
   const listenHost = getServerListenHost();
