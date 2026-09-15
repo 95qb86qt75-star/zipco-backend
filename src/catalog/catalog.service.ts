@@ -52,7 +52,7 @@ export class CatalogService {
     if (
       pricingMode === CatalogItemPricingMode.FIXED_PRICE &&
       (!Number.isInteger(priceClp) ||
-        (priceClp ?? 0) <= 0 ||
+        (priceClp ?? 0) < 100 ||
         startingPriceClp !== null)
     ) {
       throw new BadRequestException(
@@ -64,7 +64,7 @@ export class CatalogService {
       pricingMode === CatalogItemPricingMode.QUOTE &&
       (priceClp !== null ||
         (startingPriceClp !== null &&
-          (!Number.isInteger(startingPriceClp) || startingPriceClp <= 0)))
+          (!Number.isInteger(startingPriceClp) || startingPriceClp < 100)))
     ) {
       throw new BadRequestException(
         'La cotizacion no permite priceClp y su precio inicial debe ser positivo',
@@ -141,12 +141,12 @@ export class CatalogService {
     const item = this.catalogRepository.create({
       businessId,
       name: data.name.trim(),
-      description: data.description ?? null,
+      description: data.description.trim(),
       kind: data.kind,
       pricingMode: data.pricingMode,
       priceClp,
       startingPriceClp,
-      imageUrl: data.imageUrl ?? null,
+      imageUrl: data.imageUrl.trim(),
       isActive: true,
       displayOrder: (previous?.displayOrder ?? -1) + 1,
     });
@@ -176,6 +176,12 @@ export class CatalogService {
 
     Object.assign(item, data, {
       ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+      ...(data.description !== undefined
+        ? { description: data.description.trim() }
+        : {}),
+      ...(data.imageUrl !== undefined
+        ? { imageUrl: data.imageUrl.trim() }
+        : {}),
       pricingMode,
       priceClp,
       startingPriceClp,

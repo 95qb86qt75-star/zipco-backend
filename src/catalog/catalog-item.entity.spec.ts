@@ -42,12 +42,18 @@ describe('CatalogItem entity', () => {
         'CHK_catalog_item_pricing',
         'CHK_catalog_item_display_order',
         'CHK_catalog_item_name_not_blank',
+        'CHK_catalog_item_description_not_blank',
+        'CHK_catalog_item_cloudinary_image',
       ]),
     );
     expect(
       checks.find((check) => check.name === 'CHK_catalog_item_pricing')
         ?.expression,
     ).toContain('"priceClp" IS NOT NULL');
+    expect(
+      checks.find((check) => check.name === 'CHK_catalog_item_pricing')
+        ?.expression,
+    ).toContain('"priceClp" >= 100');
   });
 
   it('links each catalog item to its business with cascade deletion', () => {
@@ -63,7 +69,7 @@ describe('CatalogItem entity', () => {
     );
   });
 
-  it('uses the agreed lengths and nullable price fields', () => {
+  it('requires description and image while keeping prices nullable', () => {
     const columns = metadata.columns.filter(
       (column) => column.target === CatalogItem,
     );
@@ -73,10 +79,16 @@ describe('CatalogItem entity', () => {
 
     expect(column('name')).toEqual(expect.objectContaining({ length: 120 }));
     expect(column('description')).toEqual(
-      expect.objectContaining({ length: 500, nullable: true }),
+      expect.objectContaining({ length: 500 }),
+    );
+    expect(column('description')).not.toEqual(
+      expect.objectContaining({ nullable: true }),
     );
     expect(column('imageUrl')).toEqual(
-      expect.objectContaining({ length: 2048, nullable: true }),
+      expect.objectContaining({ length: 2048 }),
+    );
+    expect(column('imageUrl')).not.toEqual(
+      expect.objectContaining({ nullable: true }),
     );
     expect(column('priceClp')).toEqual(
       expect.objectContaining({ type: 'integer', nullable: true }),

@@ -31,9 +31,17 @@ export enum CatalogItemPricingMode {
 @Check('CHK_catalog_item_display_order', '"displayOrder" >= 0')
 @Check('CHK_catalog_item_name_not_blank', 'length(btrim("name")) > 0')
 @Check(
+  'CHK_catalog_item_description_not_blank',
+  'length(btrim("description")) > 0',
+)
+@Check(
+  'CHK_catalog_item_cloudinary_image',
+  `"imageUrl" ~ '^https://res[.]cloudinary[.]com/[^/?#[:space:]]+/image/upload/[^[:space:]]+$'`,
+)
+@Check(
   'CHK_catalog_item_pricing',
-  `(\"pricingMode\" = 'fixed_price' AND \"priceClp\" IS NOT NULL AND \"priceClp\" > 0 AND \"startingPriceClp\" IS NULL)
-   OR (\"pricingMode\" = 'quote' AND \"priceClp\" IS NULL AND (\"startingPriceClp\" IS NULL OR \"startingPriceClp\" > 0))
+  `(\"pricingMode\" = 'fixed_price' AND \"priceClp\" IS NOT NULL AND \"priceClp\" >= 100 AND \"startingPriceClp\" IS NULL)
+   OR (\"pricingMode\" = 'quote' AND \"priceClp\" IS NULL AND (\"startingPriceClp\" IS NULL OR \"startingPriceClp\" >= 100))
    OR (\"pricingMode\" = 'view' AND \"priceClp\" IS NULL AND \"startingPriceClp\" IS NULL)`,
 )
 export class CatalogItem {
@@ -53,8 +61,8 @@ export class CatalogItem {
   @Column({ type: 'varchar', length: 120 })
   name: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
-  description: string | null;
+  @Column({ type: 'varchar', length: 500 })
+  description: string;
 
   @Column({ type: 'enum', enum: CatalogItemKind })
   kind: CatalogItemKind;
@@ -68,8 +76,8 @@ export class CatalogItem {
   @Column({ type: 'integer', nullable: true })
   startingPriceClp: number | null;
 
-  @Column({ type: 'varchar', length: 2048, nullable: true })
-  imageUrl: string | null;
+  @Column({ type: 'varchar', length: 2048 })
+  imageUrl: string;
 
   @Column({ type: 'boolean', default: true })
   isActive: boolean;

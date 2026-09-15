@@ -7,6 +7,7 @@ import {
   Matches,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import {
   CatalogItemKind,
@@ -21,10 +22,12 @@ export class UpdateCatalogItemDto {
   @MaxLength(120)
   name?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
+  @IsNotEmpty()
+  @Matches(/\S/)
   @MaxLength(500)
-  description?: string | null;
+  description?: string;
 
   @IsOptional()
   @IsEnum(CatalogItemKind)
@@ -36,16 +39,20 @@ export class UpdateCatalogItemDto {
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(100)
   priceClp?: number | null;
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(100)
   startingPriceClp?: number | null;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
+  @IsNotEmpty()
+  @Matches(
+    /^https:\/\/res\.cloudinary\.com\/[^/?#\s]+\/image\/upload\/[^\s]+$/i,
+  )
   @MaxLength(2048)
-  imageUrl?: string | null;
+  imageUrl?: string;
 }

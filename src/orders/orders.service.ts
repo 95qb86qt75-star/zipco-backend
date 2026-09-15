@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import {
   CatalogItem,
+  CatalogItemKind,
   CatalogItemPricingMode,
 } from '../catalog/catalog-item.entity';
 import { Business } from '../businesses/business.entity';
@@ -225,6 +226,7 @@ export class OrdersService {
           id: In(catalogItemIds),
           businessId: data.businessId,
           isActive: true,
+          kind: CatalogItemKind.PRODUCT,
           pricingMode: CatalogItemPricingMode.FIXED_PRICE,
         },
         lock: { mode: 'pessimistic_read' },
@@ -239,7 +241,13 @@ export class OrdersService {
       const catalogById = new Map(catalogItems.map((item) => [item.id, item]));
       const lines = data.items.map((requestedItem) => {
         const catalogItem = catalogById.get(requestedItem.catalogItemId);
-        if (!catalogItem || !Number.isInteger(catalogItem.priceClp)) {
+        if (
+          !catalogItem ||
+          catalogItem.kind !== CatalogItemKind.PRODUCT ||
+          catalogItem.pricingMode !== CatalogItemPricingMode.FIXED_PRICE ||
+          !catalogItem.isActive ||
+          !Number.isInteger(catalogItem.priceClp)
+        ) {
           throw new ConflictException(
             'El catalogo cambio. Actualiza e intenta nuevamente',
           );

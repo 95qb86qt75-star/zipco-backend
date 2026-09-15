@@ -10,6 +10,11 @@ import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
 
 describe('CatalogController HTTP contract', () => {
+  const requiredDetails = {
+    description: 'Descripcion del articulo',
+    imageUrl:
+      'https://res.cloudinary.com/zipco/image/upload/v1/catalogo/articulo.jpg',
+  };
   let app: INestApplication;
   let jwtService: JwtService;
   const catalogService = {
@@ -72,6 +77,7 @@ describe('CatalogController HTTP contract', () => {
   it('accepts the exact create contract for an authenticated owner', async () => {
     const body = {
       name: 'Torta',
+      ...requiredDetails,
       kind: CatalogItemKind.PRODUCT,
       pricingMode: CatalogItemPricingMode.FIXED_PRICE,
       priceClp: 12000,
@@ -88,6 +94,47 @@ describe('CatalogController HTTP contract', () => {
       body,
       expect.objectContaining({ id: 10 }),
     );
+  });
+
+  it('accepts $100 and rejects $99 as the catalog price boundary', async () => {
+    await request(app.getHttpServer())
+      .post('/businesses/1/catalog-items')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({
+        name: 'Articulo minimo',
+        ...requiredDetails,
+        kind: CatalogItemKind.PRODUCT,
+        pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+        priceClp: 100,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/businesses/1/catalog-items')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({
+        name: 'Articulo invalido',
+        ...requiredDetails,
+        kind: CatalogItemKind.PRODUCT,
+        pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+        priceClp: 99,
+      })
+      .expect(400);
+  });
+
+  it('applies the same $100 minimum to an optional quote starting price', async () => {
+    await request(app.getHttpServer())
+      .post('/businesses/1/catalog-items')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({
+        name: 'Servicio desde',
+        ...requiredDetails,
+        kind: CatalogItemKind.SERVICE,
+        pricingMode: CatalogItemPricingMode.QUOTE,
+        priceClp: null,
+        startingPriceClp: 99,
+      })
+      .expect(400);
   });
 
   it('routes the protected management catalog to the authenticated owner', async () => {
@@ -138,6 +185,7 @@ describe('CatalogController HTTP contract', () => {
       .set('Authorization', `Bearer ${token()}`)
       .send({
         name: 'Torta',
+        ...requiredDetails,
         kind: 'product',
         pricingMode: 'fixed_price',
         priceClp: 12000,
@@ -170,12 +218,67 @@ describe('CatalogController HTTP contract', () => {
       .expect(400);
   });
 
+  it.each([
+    [
+      {
+        ...requiredDetails,
+        name: 'Articulo',
+        kind: 'product',
+        pricingMode: 'view',
+        description: '',
+      },
+    ],
+    [
+      {
+        ...requiredDetails,
+        name: 'Articulo',
+        kind: 'product',
+        pricingMode: 'view',
+        description: '   ',
+      },
+    ],
+    [
+      {
+        ...requiredDetails,
+        name: 'Articulo',
+        kind: 'product',
+        pricingMode: 'view',
+        imageUrl: 'http://res.cloudinary.com/zipco/image/upload/item.jpg',
+      },
+    ],
+    [
+      {
+        ...requiredDetails,
+        name: 'Articulo',
+        kind: 'product',
+        pricingMode: 'view',
+        imageUrl: 'https://example.com/item.jpg',
+      },
+    ],
+    [
+      {
+        ...requiredDetails,
+        name: 'Articulo',
+        kind: 'product',
+        pricingMode: 'view',
+        imageUrl: null,
+      },
+    ],
+  ])('rejects missing or unsafe required catalog details', async (body) => {
+    await request(app.getHttpServer())
+      .post('/businesses/1/catalog-items')
+      .set('Authorization', `Bearer ${token()}`)
+      .send(body)
+      .expect(400);
+  });
+
   it('keeps status and order out of the create contract', async () => {
     await request(app.getHttpServer())
       .post('/businesses/1/catalog-items')
       .set('Authorization', `Bearer ${token()}`)
       .send({
         name: 'Torta',
+        ...requiredDetails,
         kind: 'product',
         pricingMode: 'fixed_price',
         priceClp: 12000,

@@ -20,10 +20,11 @@ export class CreateCatalogItemDto {
   @MaxLength(120)
   name: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
+  @Matches(/\S/)
   @MaxLength(500)
-  description?: string | null;
+  description: string;
 
   @IsEnum(CatalogItemKind)
   kind: CatalogItemKind;
@@ -33,16 +34,19 @@ export class CreateCatalogItemDto {
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(100)
   priceClp?: number | null;
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(100)
   startingPriceClp?: number | null;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
+  @Matches(
+    /^https:\/\/res\.cloudinary\.com\/[^/?#\s]+\/image\/upload\/[^\s]+$/i,
+  )
   @MaxLength(2048)
-  imageUrl?: string | null;
+  imageUrl: string;
 }

@@ -14,6 +14,11 @@ import {
 import { CatalogService } from './catalog.service';
 
 describe('CatalogService', () => {
+  const requiredDetails = {
+    description: 'Descripcion del articulo',
+    imageUrl:
+      'https://res.cloudinary.com/zipco/image/upload/v1/catalogo/articulo.jpg',
+  };
   const owner = { id: 10, role: 'user' };
   const otherUser = { id: 99, role: 'user' };
   const adminWhoIsNotOwner = { id: 99, role: 'admin' };
@@ -134,6 +139,7 @@ describe('CatalogService', () => {
       1,
       {
         name: '  Torta de chocolate  ',
+        ...requiredDetails,
         kind: CatalogItemKind.PRODUCT,
         pricingMode: CatalogItemPricingMode.FIXED_PRICE,
         priceClp: 12000,
@@ -155,9 +161,9 @@ describe('CatalogService', () => {
 
   it.each([
     [CatalogItemPricingMode.FIXED_PRICE, null, null],
-    [CatalogItemPricingMode.FIXED_PRICE, 0, null],
+    [CatalogItemPricingMode.FIXED_PRICE, 99, null],
     [CatalogItemPricingMode.QUOTE, 1000, null],
-    [CatalogItemPricingMode.QUOTE, null, 0],
+    [CatalogItemPricingMode.QUOTE, null, 99],
     [CatalogItemPricingMode.VIEW, 1000, null],
   ])(
     'rejects invalid pricing mode combinations',
@@ -167,6 +173,7 @@ describe('CatalogService', () => {
           1,
           {
             name: 'Articulo',
+            ...requiredDetails,
             kind: CatalogItemKind.PRODUCT,
             pricingMode,
             priceClp,
@@ -180,12 +187,43 @@ describe('CatalogService', () => {
     },
   );
 
+  it('accepts the exact $100 minimum for fixed and quote prices', async () => {
+    await expect(
+      service.create(
+        1,
+        {
+          name: 'Articulo minimo',
+          ...requiredDetails,
+          kind: CatalogItemKind.PRODUCT,
+          pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+          priceClp: 100,
+        },
+        owner,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ priceClp: 100 }));
+
+    await expect(
+      service.create(
+        1,
+        {
+          name: 'Servicio desde',
+          ...requiredDetails,
+          kind: CatalogItemKind.SERVICE,
+          pricingMode: CatalogItemPricingMode.QUOTE,
+          startingPriceClp: 100,
+        },
+        owner,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ startingPriceClp: 100 }));
+  });
+
   it('allows quote without starting price and view without prices', async () => {
     await expect(
       service.create(
         1,
         {
           name: 'Personalizado',
+          ...requiredDetails,
           kind: CatalogItemKind.SERVICE,
           pricingMode: CatalogItemPricingMode.QUOTE,
         },
@@ -198,6 +236,7 @@ describe('CatalogService', () => {
         1,
         {
           name: 'Galeria',
+          ...requiredDetails,
           kind: CatalogItemKind.SERVICE,
           pricingMode: CatalogItemPricingMode.VIEW,
         },

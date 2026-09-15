@@ -209,6 +209,23 @@ describe('OrdersService secure creation', () => {
     },
   );
 
+  it('rejects a fixed-price service while its request flow is unavailable', async () => {
+    manager.find.mockResolvedValue([
+      {
+        ...chocolateCake,
+        kind: CatalogItemKind.SERVICE,
+      },
+    ]);
+
+    await expect(
+      service.create(
+        { businessId: 20, items: [{ catalogItemId: 5, quantity: 1 }] },
+        10,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(orderRepository.save).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate IDs before opening a transaction', async () => {
     await expect(
       service.create(
@@ -260,7 +277,13 @@ describe('OrdersService secure creation', () => {
 
     expect(manager.find).toHaveBeenCalledWith(
       CatalogItem,
-      expect.objectContaining({ lock: { mode: 'pessimistic_read' } }),
+      expect.objectContaining({
+        where: expect.objectContaining({
+          kind: CatalogItemKind.PRODUCT,
+          pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+        }),
+        lock: { mode: 'pessimistic_read' },
+      }),
     );
   });
 });
