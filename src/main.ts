@@ -7,17 +7,14 @@ import {
   assertDevDatabaseMarker,
   getServerListenHost,
 } from './dev/dev-environment';
+import { getCorsOrigins } from './config/cors-origins';
 
 async function bootstrap() {
   assertDevAuthConfiguration();
   const app = await NestFactory.create(AppModule);
   await assertDevDatabaseMarker(app.get(DataSource));
   app.enableCors({
-    origin: [
-      'http://127.0.0.1:5173',
-      'http://localhost:5173',
-      'https://zipco-app.vercel.app',
-    ],
+    origin: getCorsOrigins(),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     credentials: true,
   });
