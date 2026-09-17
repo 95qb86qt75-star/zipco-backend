@@ -17,6 +17,7 @@ import { getDatabaseUrl } from './database-url';
 import { DevAuthModule } from './dev/dev-auth.module';
 import { CatalogItem } from './catalog/catalog-item.entity';
 import { CatalogModule } from './catalog/catalog.module';
+import { QaAuthModule } from './qa/qa-auth.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { CatalogModule } from './catalog/catalog.module';
     OrdersModule,
     CatalogModule,
     DevAuthModule.register(),
+    QaAuthModule.register(),
   ],
   controllers: [AppController],
   providers: [AppService],

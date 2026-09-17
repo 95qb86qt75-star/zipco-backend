@@ -24,6 +24,7 @@
     "start:debug": "nest start --debug --watch",
     "start:local": "node --env-file=.env.development.local node_modules/@nestjs/cli/bin/nest.js start --watch",
     "dev:setup": "node --env-file=.env.development.local -r ts-node/register src/dev/setup-dev-data.ts",
+    "qa:setup:prod": "node dist/qa/setup-qa-data.js",
     "migration:run:local": "node --env-file=.env.development.local -r ts-node/register -r tsconfig-paths/register node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
     "migration:generate:test": "node --env-file=.env.test.local -r ts-node/register -r tsconfig-paths/register node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts -p",
     "migration:run:test": "node --env-file=.env.test.local -r ts-node/register -r tsconfig-paths/register node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
