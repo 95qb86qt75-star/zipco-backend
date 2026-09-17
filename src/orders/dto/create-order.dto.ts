@@ -13,7 +13,32 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
 } from 'class-validator';
+
+@ValidatorConstraint({ name: 'orderDeliverySelection', async: false })
+class OrderDeliverySelectionConstraint implements ValidatorConstraintInterface {
+  validate(_: unknown, arguments_: ValidationArguments): boolean {
+    const order = arguments_.object as CreateOrderDto;
+    if (typeof order.needNow !== 'boolean') return false;
+    if (order.needNow) {
+      return order.deliveryDate == null && order.deliveryTime == null;
+    }
+    return (
+      typeof order.deliveryDate === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(order.deliveryDate) &&
+      typeof order.deliveryTime === 'string' &&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(order.deliveryTime)
+    );
+  }
+
+  defaultMessage(): string {
+    return 'Selecciona entrega inmediata o una fecha y hora validas';
+  }
+}
 
 export class CreateOrderItemDto {
   @IsInt()
@@ -44,9 +69,9 @@ export class CreateOrderDto {
   @MaxLength(300)
   note?: string | null;
 
-  @IsOptional()
   @IsBoolean()
-  needNow?: boolean;
+  @Validate(OrderDeliverySelectionConstraint)
+  needNow: boolean;
 
   @IsOptional()
   @IsString()

@@ -129,6 +129,10 @@ describe('POST /orders secure HTTP contract', () => {
     [{ deliveryDate: '20-09-2026' }],
     [{ deliveryTime: '25:99' }],
     [{ needNow: 'false' }],
+    [{}],
+    [{ needNow: false, deliveryDate: null, deliveryTime: null }],
+    [{ needNow: false, deliveryDate: '2026-09-20', deliveryTime: null }],
+    [{ needNow: true, deliveryDate: '2026-09-20', deliveryTime: '13:30' }],
   ])('rejects malformed order details', async (extraFields) => {
     await request(app.getHttpServer())
       .post('/orders')
