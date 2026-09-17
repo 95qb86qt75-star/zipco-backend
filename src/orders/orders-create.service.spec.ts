@@ -96,6 +96,9 @@ describe('OrdersService secure creation', () => {
           { catalogItemId: 8, quantity: 1 },
         ],
         note: 'Para manana',
+        needNow: true,
+        deliveryDate: null,
+        deliveryTime: null,
       },
       10,
     );
@@ -144,6 +147,9 @@ describe('OrdersService secure creation', () => {
         total: 1,
         products: 'forged',
         status: 'completed',
+        needNow: true,
+        deliveryDate: null,
+        deliveryTime: null,
       } as never,
       10,
     );
@@ -271,7 +277,13 @@ describe('OrdersService secure creation', () => {
   it('reads catalog rows under a transaction lock', async () => {
     manager.find.mockResolvedValue([chocolateCake]);
     await service.create(
-      { businessId: 20, items: [{ catalogItemId: 5, quantity: 1 }] },
+      {
+        businessId: 20,
+        items: [{ catalogItemId: 5, quantity: 1 }],
+        needNow: true,
+        deliveryDate: null,
+        deliveryTime: null,
+      },
       10,
     );
 
@@ -286,4 +298,26 @@ describe('OrdersService secure creation', () => {
       }),
     );
   });
+
+  it.each([
+    { needNow: false, deliveryDate: null, deliveryTime: null },
+    { needNow: false, deliveryDate: '2026-09-20', deliveryTime: null },
+    { needNow: true, deliveryDate: '2026-09-20', deliveryTime: '13:30' },
+  ])(
+    'rejects an incomplete or contradictory delivery selection',
+    async (delivery) => {
+      manager.find.mockResolvedValue([chocolateCake]);
+      await expect(
+        service.create(
+          {
+            businessId: 20,
+            items: [{ catalogItemId: 5, quantity: 1 }],
+            ...delivery,
+          },
+          10,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(orderRepository.save).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -59,6 +59,30 @@ const MAX_ORDER_TOTAL_CLP = 9_999_999_999;
 const MAX_ORDER_ITEMS = 20;
 const MAX_ORDER_ITEM_QUANTITY = 99;
 
+function isValidCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function hasValidDeliverySelection(data: CreateOrderDto): boolean {
+  if (typeof data.needNow !== 'boolean') return false;
+  if (data.needNow) {
+    return data.deliveryDate == null && data.deliveryTime == null;
+  }
+  return (
+    typeof data.deliveryDate === 'string' &&
+    isValidCalendarDate(data.deliveryDate) &&
+    typeof data.deliveryTime === 'string' &&
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(data.deliveryTime)
+  );
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -276,6 +300,12 @@ export class OrdersService {
 
       if (!Number.isSafeInteger(total) || total > MAX_ORDER_TOTAL_CLP) {
         throw new BadRequestException('El total del pedido es demasiado alto');
+      }
+
+      if (!hasValidDeliverySelection(data)) {
+        throw new BadRequestException(
+          'Selecciona entrega inmediata o una fecha y hora validas',
+        );
       }
 
       const orderRepository = manager.getRepository(Order);
