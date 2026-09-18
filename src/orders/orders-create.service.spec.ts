@@ -19,6 +19,7 @@ import { UsersService } from '../users/users.service';
 import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
 import { OrdersService } from './orders.service';
+import { PushNotificationsService } from '../notifications/push-notifications.service';
 
 describe('OrdersService secure creation', () => {
   const user = { id: 10, name: 'Cliente', phone: '+56911111111' };
@@ -49,6 +50,7 @@ describe('OrdersService secure creation', () => {
   let orderRepository: { create: jest.Mock; save: jest.Mock };
   let orderItemRepository: { create: jest.Mock; save: jest.Mock };
   let dataSource: { transaction: jest.Mock };
+  let pushNotifications: { notifyNewOrder: jest.Mock };
 
   beforeEach(async () => {
     orderRepository = {
@@ -70,6 +72,7 @@ describe('OrdersService secure creation', () => {
       transaction: jest.fn(async (callback) => callback(manager)),
     };
     usersService = { findOne: jest.fn().mockResolvedValue(user) };
+    pushNotifications = { notifyNewOrder: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -81,6 +84,7 @@ describe('OrdersService secure creation', () => {
         { provide: BusinessesService, useValue: { findOne: jest.fn() } },
         { provide: UsersService, useValue: usersService },
         { provide: DataSource, useValue: dataSource },
+        { provide: PushNotificationsService, useValue: pushNotifications },
       ],
     }).compile();
 
@@ -135,6 +139,10 @@ describe('OrdersService secure creation', () => {
         orderId: 50,
       },
     ]);
+    expect(pushNotifications.notifyNewOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 50, total: 32000 }),
+      30,
+    );
     expect(result.items).toHaveLength(2);
   });
 

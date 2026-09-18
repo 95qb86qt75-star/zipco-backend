@@ -17,6 +17,8 @@ import { getDatabaseUrl } from './database-url';
 import { DevAuthModule } from './dev/dev-auth.module';
 import { CatalogItem } from './catalog/catalog-item.entity';
 import { CatalogModule } from './catalog/catalog.module';
+import { PushNotificationsModule } from './notifications/push-notifications.module';
+import { PushSubscription } from './notifications/push-subscription.entity';
 
 @Module({
   imports: [
@@ -29,6 +31,7 @@ import { CatalogModule } from './catalog/catalog.module';
         Category,
         Order,
         OrderItem,
+        PushSubscription,
         User,
         VerificationCode,
       ],
@@ -45,6 +48,7 @@ import { CatalogModule } from './catalog/catalog.module';
     OrdersModule,
     CatalogModule,
     DevAuthModule.register(),
+    PushNotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
