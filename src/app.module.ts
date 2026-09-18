@@ -18,6 +18,8 @@ import { DevAuthModule } from './dev/dev-auth.module';
 import { CatalogItem } from './catalog/catalog-item.entity';
 import { CatalogModule } from './catalog/catalog.module';
 import { QaAuthModule } from './qa/qa-auth.module';
+import { PushNotificationsModule } from './notifications/push-notifications.module';
+import { PushSubscription } from './notifications/push-subscription.entity';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { QaAuthModule } from './qa/qa-auth.module';
         Category,
         Order,
         OrderItem,
+        PushSubscription,
         User,
         VerificationCode,
       ],
@@ -47,6 +50,7 @@ import { QaAuthModule } from './qa/qa-auth.module';
     CatalogModule,
     DevAuthModule.register(),
     QaAuthModule.register(),
+    PushNotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

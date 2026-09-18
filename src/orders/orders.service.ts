@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,6 +21,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
+import { PushNotificationsService } from '../notifications/push-notifications.service';
 import {
   CANCELLATION_REASONS,
   CancellationReason,
@@ -91,6 +93,8 @@ export class OrdersService {
     private businessesService: BusinessesService,
     private usersService: UsersService,
     private dataSource: DataSource,
+    @Optional()
+    private pushNotifications?: PushNotificationsService,
   ) {}
 
   private async findOne(id: number): Promise<Order> {
@@ -228,7 +232,8 @@ export class OrdersService {
       throw new UnauthorizedException('Usuario no encontrado');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    let businessOwnerUserId = 0;
+    const savedOrder = await this.dataSource.transaction(async (manager) => {
       const business = await manager.findOne(Business, {
         where: { id: data.businessId, status: 'approved' },
         select: { id: true, userId: true },
@@ -244,6 +249,7 @@ export class OrdersService {
           'No puedes realizar pedidos en tu propio negocio',
         );
       }
+      businessOwnerUserId = business.userId;
 
       const catalogItems = await manager.find(CatalogItem, {
         where: {
@@ -342,6 +348,12 @@ export class OrdersService {
 
       return savedOrder;
     });
+
+    await this.pushNotifications?.notifyNewOrder(
+      savedOrder,
+      businessOwnerUserId,
+    );
+    return savedOrder;
   }
 
   async findByUser(userId: number): Promise<Order[]> {
