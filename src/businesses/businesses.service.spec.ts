@@ -9,6 +9,7 @@ describe('BusinessesService', () => {
   let service: BusinessesService;
   let businessRepository: {
     findOne: jest.Mock;
+    createQueryBuilder: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
     save: jest.Mock;
@@ -17,6 +18,12 @@ describe('BusinessesService', () => {
   };
   let categoryRepository: {
     existsBy: jest.Mock;
+  };
+  let queryBuilder: {
+    andWhere: jest.Mock;
+    orderBy: jest.Mock;
+    getMany: jest.Mock;
+    getOne: jest.Mock;
   };
 
   const existingBusiness = {
@@ -27,8 +34,18 @@ describe('BusinessesService', () => {
   } as Business;
 
   beforeEach(async () => {
+    queryBuilder = {
+      andWhere: jest.fn(),
+      orderBy: jest.fn(),
+      getMany: jest.fn(),
+      getOne: jest.fn(),
+    };
+    queryBuilder.andWhere.mockReturnValue(queryBuilder);
+    queryBuilder.orderBy.mockReturnValue(queryBuilder);
+
     businessRepository = {
       findOne: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       update: jest.fn(),
       delete: jest.fn(),
       save: jest.fn(),
@@ -60,6 +77,38 @@ describe('BusinessesService', () => {
     expect(service).toBeDefined();
   });
 
+  it('findAll() returns only approved and complete businesses with an active catalog', async () => {
+    const publicBusinesses = [{ ...existingBusiness, status: 'approved' }];
+    queryBuilder.getMany.mockResolvedValue(publicBusinesses);
+
+    await expect(service.findAll()).resolves.toEqual(publicBusinesses);
+
+    expect(businessRepository.createQueryBuilder).toHaveBeenCalledWith(
+      'business',
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('public_catalog_item."isActive" = true'),
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'business.categoryId IS NOT NULL',
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('business.schedule'),
+    );
+  });
+
+  it('findPublicOne() hides an incomplete or unpublished business', async () => {
+    queryBuilder.getOne.mockResolvedValue(null);
+
+    await expect(service.findPublicOne(1)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith('business.id = :id', {
+      id: 1,
+    });
+  });
+
   it('create() rejects a categoryId that does not exist', async () => {
     categoryRepository.existsBy.mockResolvedValue(false);
     await expect(
@@ -89,7 +138,7 @@ describe('BusinessesService', () => {
   });
 
   it('update() accepts a categoryId that exists', async () => {
-    const updatedBusiness = { ...existingBusiness, categoryId: 5 } as Business;
+    const updatedBusiness = { ...existingBusiness, categoryId: 5 };
     businessRepository.findOne
       .mockResolvedValueOnce(existingBusiness)
       .mockResolvedValueOnce(updatedBusiness);

@@ -6,6 +6,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Business } from '../businesses/business.entity';
+import { BusinessesService } from '../businesses/businesses.service';
 import {
   CatalogItem,
   CatalogItemKind,
@@ -43,7 +44,8 @@ describe('CatalogService', () => {
     save: jest.Mock;
     manager: { transaction: jest.Mock };
   };
-  let businessRepository: { findOne: jest.Mock; existsBy: jest.Mock };
+  let businessRepository: { findOne: jest.Mock };
+  let businessesService: { findPublicOne: jest.Mock };
   let transactionalManager: { find: jest.Mock; update: jest.Mock };
 
   beforeEach(async () => {
@@ -64,7 +66,9 @@ describe('CatalogService', () => {
     };
     businessRepository = {
       findOne: jest.fn().mockResolvedValue(business),
-      existsBy: jest.fn().mockResolvedValue(true),
+    };
+    businessesService = {
+      findPublicOne: jest.fn().mockResolvedValue(business),
     };
 
     const module = await Test.createTestingModule({
@@ -78,6 +82,7 @@ describe('CatalogService', () => {
           provide: getRepositoryToken(Business),
           useValue: businessRepository,
         },
+        { provide: BusinessesService, useValue: businessesService },
       ],
     }).compile();
 
@@ -91,14 +96,13 @@ describe('CatalogService', () => {
       where: { businessId: 1, isActive: true },
       order: { displayOrder: 'ASC', id: 'ASC' },
     });
-    expect(businessRepository.existsBy).toHaveBeenCalledWith({
-      id: 1,
-      status: 'approved',
-    });
+    expect(businessesService.findPublicOne).toHaveBeenCalledWith(1);
   });
 
   it('does not expose a catalog for a missing or unapproved business', async () => {
-    businessRepository.existsBy.mockResolvedValue(false);
+    businessesService.findPublicOne.mockRejectedValue(
+      new NotFoundException('Negocio no encontrado'),
+    );
 
     await expect(service.findPublic(1)).rejects.toBeInstanceOf(
       NotFoundException,
