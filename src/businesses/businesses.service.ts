@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { SelectQueryBuilder, Repository } from 'typeorm';
 import { Business } from './business.entity';
 import { Category } from '../categories/category.entity';
 
@@ -22,6 +22,34 @@ export class BusinessesService {
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
   ) {}
+
+  private applyPublicVisibility(
+    query: SelectQueryBuilder<Business>,
+  ): SelectQueryBuilder<Business> {
+    return query
+      .andWhere('business.status = :publicStatus', {
+        publicStatus: 'approved',
+      })
+      .andWhere('length(btrim(business.name)) > 0')
+      .andWhere("length(btrim(coalesce(business.description, ''))) > 0")
+      .andWhere("length(btrim(coalesce(business.type, ''))) > 0")
+      .andWhere("length(btrim(coalesce(business.photo, ''))) > 0")
+      .andWhere("length(btrim(coalesce(business.category, ''))) > 0")
+      .andWhere(`business.schedule ~ '"enabled"\\s*:\\s*true'`)
+      .andWhere('business.categoryId IS NOT NULL')
+      .andWhere('business.latitude IS NOT NULL')
+      .andWhere('business.longitude IS NOT NULL')
+      .andWhere('business.latitude <> 0')
+      .andWhere('business.longitude <> 0')
+      .andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM catalog_item public_catalog_item
+          WHERE public_catalog_item."businessId" = business.id
+            AND public_catalog_item."isActive" = true
+        )`,
+      );
+  }
 
   private ensureCanManageBusiness(
     business: Business,
@@ -56,7 +84,9 @@ export class BusinessesService {
   }
 
   async findAll(): Promise<Business[]> {
-    return this.businessRepository.find();
+    return this.applyPublicVisibility(
+      this.businessRepository.createQueryBuilder('business'),
+    ).getMany();
   }
 
   async findPending(): Promise<Business[]> {
@@ -69,6 +99,20 @@ export class BusinessesService {
 
   async findOne(id: number): Promise<Business> {
     const business = await this.businessRepository.findOne({ where: { id } });
+
+    if (!business) {
+      throw new NotFoundException('Negocio no encontrado');
+    }
+
+    return business;
+  }
+
+  async findPublicOne(id: number): Promise<Business> {
+    const business = await this.applyPublicVisibility(
+      this.businessRepository.createQueryBuilder('business'),
+    )
+      .andWhere('business.id = :id', { id })
+      .getOne();
 
     if (!business) {
       throw new NotFoundException('Negocio no encontrado');
@@ -123,9 +167,9 @@ export class BusinessesService {
     categoryId?: number,
     search?: string,
   ): Promise<Business[]> {
-    const query = this.businessRepository
-      .createQueryBuilder('business')
-      .where('business.status = :status', { status: 'approved' })
+    const query = this.applyPublicVisibility(
+      this.businessRepository.createQueryBuilder('business'),
+    )
       .andWhere(
         '(6371 * acos(cos(radians(:lat)) * cos(radians(business.latitude)) * cos(radians(business.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(business.latitude)))) < :radius',
         { lat, lng, radius: radiusKm },

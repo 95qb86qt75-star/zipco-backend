@@ -232,6 +232,8 @@ export class OrdersService {
       throw new UnauthorizedException('Usuario no encontrado');
     }
 
+    await this.businessesService.findPublicOne(data.businessId);
+
     let businessOwnerUserId = 0;
     const savedOrder = await this.dataSource.transaction(async (manager) => {
       const business = await manager.findOne(Business, {

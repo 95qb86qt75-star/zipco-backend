@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business } from '../businesses/business.entity';
+import { BusinessesService } from '../businesses/businesses.service';
 import { CatalogItem, CatalogItemPricingMode } from './catalog-item.entity';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
@@ -20,6 +21,7 @@ export class CatalogService {
     private readonly catalogRepository: Repository<CatalogItem>,
     @InjectRepository(Business)
     private readonly businessRepository: Repository<Business>,
+    private readonly businessesService: BusinessesService,
   ) {}
 
   private async ensureOwner(
@@ -97,13 +99,7 @@ export class CatalogService {
   }
 
   async findPublic(businessId: number): Promise<CatalogItem[]> {
-    const isPublicBusiness = await this.businessRepository.existsBy({
-      id: businessId,
-      status: 'approved',
-    });
-    if (!isPublicBusiness) {
-      throw new NotFoundException('Negocio no encontrado');
-    }
+    await this.businessesService.findPublicOne(businessId);
 
     return this.catalogRepository.find({
       where: { businessId, isActive: true },

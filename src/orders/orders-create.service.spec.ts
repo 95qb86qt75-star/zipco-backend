@@ -51,6 +51,7 @@ describe('OrdersService secure creation', () => {
   let orderItemRepository: { create: jest.Mock; save: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let pushNotifications: { notifyNewOrder: jest.Mock };
+  let businessesService: { findOne: jest.Mock; findPublicOne: jest.Mock };
 
   beforeEach(async () => {
     orderRepository = {
@@ -73,6 +74,10 @@ describe('OrdersService secure creation', () => {
     };
     usersService = { findOne: jest.fn().mockResolvedValue(user) };
     pushNotifications = { notifyNewOrder: jest.fn() };
+    businessesService = {
+      findOne: jest.fn(),
+      findPublicOne: jest.fn().mockResolvedValue(business),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -81,7 +86,7 @@ describe('OrdersService secure creation', () => {
           provide: getRepositoryToken(Order),
           useValue: { findOne: jest.fn(), update: jest.fn(), find: jest.fn() },
         },
-        { provide: BusinessesService, useValue: { findOne: jest.fn() } },
+        { provide: BusinessesService, useValue: businessesService },
         { provide: UsersService, useValue: usersService },
         { provide: DataSource, useValue: dataSource },
         { provide: PushNotificationsService, useValue: pushNotifications },
@@ -89,6 +94,28 @@ describe('OrdersService secure creation', () => {
     }).compile();
 
     service = module.get(OrdersService);
+  });
+
+  it('rejects orders for a business that is not publicly complete', async () => {
+    businessesService.findPublicOne.mockRejectedValue(
+      new NotFoundException('Negocio no encontrado'),
+    );
+
+    await expect(
+      service.create(
+        {
+          businessId: 20,
+          items: [{ catalogItemId: 5, quantity: 1 }],
+          note: 'Pedido de prueba',
+          needNow: true,
+          deliveryDate: null,
+          deliveryTime: null,
+        },
+        10,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('uses official catalog prices and stores immutable snapshots', async () => {

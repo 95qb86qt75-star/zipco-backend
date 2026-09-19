@@ -167,7 +167,7 @@ export class BusinessesController {
 
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.businessesService.findOne(id);
+    return this.businessesService.findPublicOne(id);
   }
 
   @Patch(':id')
