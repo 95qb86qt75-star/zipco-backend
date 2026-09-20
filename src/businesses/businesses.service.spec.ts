@@ -21,9 +21,11 @@ describe('BusinessesService', () => {
   };
   let queryBuilder: {
     andWhere: jest.Mock;
+    addSelect: jest.Mock;
     orderBy: jest.Mock;
     getMany: jest.Mock;
     getOne: jest.Mock;
+    getRawAndEntities: jest.Mock;
   };
 
   const existingBusiness = {
@@ -36,11 +38,14 @@ describe('BusinessesService', () => {
   beforeEach(async () => {
     queryBuilder = {
       andWhere: jest.fn(),
+      addSelect: jest.fn(),
       orderBy: jest.fn(),
       getMany: jest.fn(),
       getOne: jest.fn(),
+      getRawAndEntities: jest.fn(),
     };
     queryBuilder.andWhere.mockReturnValue(queryBuilder);
+    queryBuilder.addSelect.mockReturnValue(queryBuilder);
     queryBuilder.orderBy.mockReturnValue(queryBuilder);
 
     businessRepository = {
@@ -78,10 +83,38 @@ describe('BusinessesService', () => {
   });
 
   it('findAll() returns only approved and complete businesses with an active catalog', async () => {
-    const publicBusinesses = [{ ...existingBusiness, status: 'approved' }];
+    const publicBusinesses = [
+      {
+        ...existingBusiness,
+        status: 'approved',
+        address: 'Calle privada 123',
+        latitude: -37.0,
+        longitude: -73.0,
+        phone: '56911111111',
+        email: 'privado@example.com',
+        keywords: 'secreto interno',
+        products: '[{"legacy":true}]',
+        showOnlyDistance: true,
+      } as Business,
+    ];
     queryBuilder.getMany.mockResolvedValue(publicBusinesses);
 
-    await expect(service.findAll()).resolves.toEqual(publicBusinesses);
+    const result = await service.findAll();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 1,
+      address: null,
+      latitude: null,
+      longitude: null,
+      showOnlyDistance: true,
+    });
+    expect(result[0]).not.toHaveProperty('phone');
+    expect(result[0]).not.toHaveProperty('email');
+    expect(result[0]).not.toHaveProperty('keywords');
+    expect(result[0]).not.toHaveProperty('products');
+    expect(result[0]).not.toHaveProperty('status');
+    expect(result[0]).not.toHaveProperty('createdAt');
 
     expect(businessRepository.createQueryBuilder).toHaveBeenCalledWith(
       'business',
@@ -95,6 +128,30 @@ describe('BusinessesService', () => {
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       expect.stringContaining('business.schedule'),
     );
+  });
+
+  it('findNearby() returns distance without exposing an exact private location', async () => {
+    const privateBusiness = {
+      ...existingBusiness,
+      status: 'approved',
+      address: 'Calle privada 123',
+      latitude: -37.0,
+      longitude: -73.0,
+      showOnlyDistance: true,
+    } as Business;
+    queryBuilder.getRawAndEntities.mockResolvedValue({
+      entities: [privateBusiness],
+      raw: [{ distanceKm: '1.25' }],
+    });
+
+    const result = await service.findNearby(-37.01, -73.01, 10);
+
+    expect(result[0]).toMatchObject({
+      address: null,
+      latitude: null,
+      longitude: null,
+      distanceKm: 1.25,
+    });
   });
 
   it('findPublicOne() hides an incomplete or unpublished business', async () => {

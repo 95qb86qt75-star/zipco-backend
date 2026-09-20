@@ -119,7 +119,10 @@ export class BusinessesController {
   }
 
   @Get('pending')
-  findPending() {
+  @UseGuards(AuthGuard('jwt'))
+  async findPending(@Request() req) {
+    await this.ensureIsAdmin(req.user?.id);
+
     return this.businessesService.findPending();
   }
 

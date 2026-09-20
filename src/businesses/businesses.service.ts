@@ -14,6 +14,28 @@ type CurrentUser = {
   role?: string;
 };
 
+export type PublicBusinessResponse = Pick<
+  Business,
+  | 'id'
+  | 'name'
+  | 'description'
+  | 'type'
+  | 'photo'
+  | 'category'
+  | 'categoryId'
+  | 'schedule'
+  | 'instagram'
+  | 'facebook'
+  | 'isOpen'
+  | 'showOnlyDistance'
+  | 'userId'
+> & {
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distanceKm?: number;
+};
+
 @Injectable()
 export class BusinessesService {
   constructor(
@@ -22,6 +44,33 @@ export class BusinessesService {
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
   ) {}
+
+  private toPublicBusiness(
+    business: Business,
+    distanceKm?: number,
+  ): PublicBusinessResponse {
+    const hidesExactLocation = business.showOnlyDistance === true;
+
+    return {
+      id: business.id,
+      name: business.name,
+      description: business.description,
+      type: business.type,
+      address: hidesExactLocation ? null : business.address,
+      latitude: hidesExactLocation ? null : business.latitude,
+      longitude: hidesExactLocation ? null : business.longitude,
+      photo: business.photo,
+      category: business.category,
+      categoryId: business.categoryId,
+      schedule: business.schedule,
+      instagram: business.instagram,
+      facebook: business.facebook,
+      isOpen: business.isOpen,
+      showOnlyDistance: business.showOnlyDistance,
+      userId: business.userId,
+      ...(distanceKm === undefined ? {} : { distanceKm }),
+    };
+  }
 
   private applyPublicVisibility(
     query: SelectQueryBuilder<Business>,
@@ -83,10 +132,12 @@ export class BusinessesService {
     return this.businessRepository.save(business);
   }
 
-  async findAll(): Promise<Business[]> {
-    return this.applyPublicVisibility(
+  async findAll(): Promise<PublicBusinessResponse[]> {
+    const businesses = await this.applyPublicVisibility(
       this.businessRepository.createQueryBuilder('business'),
     ).getMany();
+
+    return businesses.map((business) => this.toPublicBusiness(business));
   }
 
   async findPending(): Promise<Business[]> {
@@ -107,7 +158,7 @@ export class BusinessesService {
     return business;
   }
 
-  async findPublicOne(id: number): Promise<Business> {
+  async findPublicOne(id: number): Promise<PublicBusinessResponse> {
     const business = await this.applyPublicVisibility(
       this.businessRepository.createQueryBuilder('business'),
     )
@@ -118,7 +169,7 @@ export class BusinessesService {
       throw new NotFoundException('Negocio no encontrado');
     }
 
-    return business;
+    return this.toPublicBusiness(business);
   }
 
   async update(
@@ -166,18 +217,19 @@ export class BusinessesService {
     radiusKm: number,
     categoryId?: number,
     search?: string,
-  ): Promise<Business[]> {
+  ): Promise<PublicBusinessResponse[]> {
+    const distanceExpression =
+      '(6371 * acos(cos(radians(:lat)) * cos(radians(business.latitude)) * cos(radians(business.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(business.latitude))))';
     const query = this.applyPublicVisibility(
       this.businessRepository.createQueryBuilder('business'),
     )
-      .andWhere(
-        '(6371 * acos(cos(radians(:lat)) * cos(radians(business.latitude)) * cos(radians(business.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(business.latitude)))) < :radius',
-        { lat, lng, radius: radiusKm },
-      )
-      .orderBy(
-        '(6371 * acos(cos(radians(:lat)) * cos(radians(business.latitude)) * cos(radians(business.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(business.latitude))))',
-        'ASC',
-      );
+      .addSelect(distanceExpression, 'distanceKm')
+      .andWhere(`${distanceExpression} < :radius`, {
+        lat,
+        lng,
+        radius: radiusKm,
+      })
+      .orderBy(distanceExpression, 'ASC');
 
     if (categoryId) {
       query.andWhere('business.categoryId = :categoryId', { categoryId });
@@ -190,6 +242,14 @@ export class BusinessesService {
       );
     }
 
-    return query.getMany();
+    const { entities, raw } = await query.getRawAndEntities();
+
+    return entities.map((business, index) => {
+      const distance = Number(raw[index]?.distanceKm);
+      return this.toPublicBusiness(
+        business,
+        Number.isFinite(distance) ? distance : undefined,
+      );
+    });
   }
 }
