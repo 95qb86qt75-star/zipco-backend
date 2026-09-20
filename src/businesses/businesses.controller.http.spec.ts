@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -12,9 +12,11 @@ import { BusinessesService } from './businesses.service';
 
 describe('BusinessesController HTTP authorization', () => {
   let app: INestApplication;
+  let jwtService: JwtService;
   const businessesService = {
     approve: jest.fn(),
     reject: jest.fn(),
+    findPending: jest.fn().mockResolvedValue([{ id: 1, status: 'pending' }]),
   };
   const userRepository = {
     findOne: jest.fn(),
@@ -36,6 +38,7 @@ describe('BusinessesController HTTP authorization', () => {
 
     app = module.createNestApplication();
     await app.init();
+    jwtService = module.get(JwtService);
   });
 
   afterAll(async () => {
@@ -48,4 +51,39 @@ describe('BusinessesController HTTP authorization', () => {
       await request(app.getHttpServer()).patch(path).expect(401);
     },
   );
+
+  it('rejects GET /businesses/pending without a token', async () => {
+    await request(app.getHttpServer()).get('/businesses/pending').expect(401);
+  });
+
+  it('rejects GET /businesses/pending for a current non-admin', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 10, role: 'user' });
+    const token = jwtService.sign({ sub: 10, role: 'user' });
+
+    await request(app.getHttpServer())
+      .get('/businesses/pending')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('rejects a stale admin token for GET /businesses/pending', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 10, role: 'user' });
+    const token = jwtService.sign({ sub: 10, role: 'admin' });
+
+    await request(app.getHttpServer())
+      .get('/businesses/pending')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('allows a current database admin to GET /businesses/pending', async () => {
+    userRepository.findOne.mockResolvedValue({ id: 99, role: 'admin' });
+    const token = jwtService.sign({ sub: 99, role: 'user' });
+
+    await request(app.getHttpServer())
+      .get('/businesses/pending')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect([{ id: 1, status: 'pending' }]);
+  });
 });
