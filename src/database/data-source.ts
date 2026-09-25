@@ -8,6 +8,7 @@ import { Category } from '../categories/category.entity';
 import { CatalogItem } from '../catalog/catalog-item.entity';
 import { Order } from '../orders/order.entity';
 import { OrderItem } from '../orders/order-item.entity';
+import { OrderCreationAttempt } from '../orders/order-creation-attempt.entity';
 import { User } from '../users/user.entity';
 import { PushSubscription } from '../notifications/push-subscription.entity';
 import { getMigrationDatabaseConfig } from './migration-config';
@@ -24,6 +25,7 @@ export default new DataSource({
     Category,
     Order,
     OrderItem,
+    OrderCreationAttempt,
     PushSubscription,
     User,
     VerificationCode,

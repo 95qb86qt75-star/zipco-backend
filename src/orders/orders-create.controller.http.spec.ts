@@ -9,6 +9,7 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 
 describe('POST /orders secure HTTP contract', () => {
+  const idempotencyKey = '123e4567-e89b-42d3-a456-426614174000';
   let app: INestApplication;
   let jwtService: JwtService;
   const ordersService = {
@@ -63,11 +64,26 @@ describe('POST /orders secure HTTP contract', () => {
     await request(app.getHttpServer())
       .post('/orders')
       .set('Authorization', `Bearer ${token()}`)
+      .set('Idempotency-Key', idempotencyKey)
       .send(body)
       .expect(201)
       .expect({ id: 1, status: 'pending' });
 
-    expect(ordersService.create).toHaveBeenCalledWith(body, 10);
+    expect(ordersService.create).toHaveBeenCalledWith(body, 10, idempotencyKey);
+  });
+
+  it('requires a valid idempotency key', async () => {
+    await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({
+        businessId: 20,
+        items: [{ catalogItemId: 5, quantity: 1 }],
+        needNow: true,
+      })
+      .expect(400);
+
+    expect(ordersService.create).not.toHaveBeenCalled();
   });
 
   it.each([

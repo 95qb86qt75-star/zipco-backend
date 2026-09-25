@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import {
   CatalogItem,
   CatalogItemKind,
@@ -20,6 +20,7 @@ import { OrderItem } from './order-item.entity';
 import { Order } from './order.entity';
 import { OrdersService } from './orders.service';
 import { PushNotificationsService } from '../notifications/push-notifications.service';
+import { OrderCreationAttempt } from './order-creation-attempt.entity';
 
 describe('OrdersService secure creation', () => {
   const user = { id: 10, name: 'Cliente', phone: '+56911111111' };
@@ -49,7 +50,12 @@ describe('OrdersService secure creation', () => {
   };
   let orderRepository: { create: jest.Mock; save: jest.Mock };
   let orderItemRepository: { create: jest.Mock; save: jest.Mock };
-  let dataSource: { transaction: jest.Mock };
+  let attemptRepository: {
+    create: jest.Mock;
+    save: jest.Mock;
+    findOne: jest.Mock;
+  };
+  let dataSource: { transaction: jest.Mock; getRepository: jest.Mock };
   let pushNotifications: { notifyNewOrder: jest.Mock };
   let businessesService: { findOne: jest.Mock; findPublicOne: jest.Mock };
 
@@ -62,15 +68,24 @@ describe('OrdersService secure creation', () => {
       create: jest.fn((data) => data),
       save: jest.fn(async (data) => data),
     };
+    attemptRepository = {
+      create: jest.fn((data) => data),
+      save: jest.fn(async (data) => data),
+      findOne: jest.fn().mockResolvedValue(null),
+    };
     manager = {
       findOne: jest.fn().mockResolvedValue(business),
       find: jest.fn().mockResolvedValue([chocolateCake, vanillaCake]),
-      getRepository: jest.fn((entity) =>
-        entity === Order ? orderRepository : orderItemRepository,
-      ),
+      getRepository: jest.fn((entity) => {
+        if (entity === Order) return orderRepository;
+        if (entity === OrderItem) return orderItemRepository;
+        if (entity === OrderCreationAttempt) return attemptRepository;
+        throw new Error('Unexpected repository');
+      }),
     };
     dataSource = {
       transaction: jest.fn(async (callback) => callback(manager)),
+      getRepository: jest.fn(() => attemptRepository),
     };
     usersService = { findOne: jest.fn().mockResolvedValue(user) };
     pushNotifications = { notifyNewOrder: jest.fn() };
@@ -171,6 +186,90 @@ describe('OrdersService secure creation', () => {
       30,
     );
     expect(result.items).toHaveLength(2);
+  });
+
+  it('returns the original order for the same key and payload without notifying twice', async () => {
+    manager.find.mockResolvedValue([chocolateCake]);
+    const idempotencyKey = '123e4567-e89b-42d3-a456-426614174000';
+    const payload = {
+      businessId: 20,
+      items: [{ catalogItemId: 5, quantity: 1 }],
+      needNow: true,
+      deliveryDate: null,
+      deliveryTime: null,
+    };
+
+    const firstOrder = await service.create(payload, 10, idempotencyKey);
+    const savedAttempt = attemptRepository.save.mock.calls[0][0];
+    attemptRepository.findOne.mockResolvedValue({
+      ...savedAttempt,
+      order: firstOrder,
+    });
+
+    const repeatedOrder = await service.create(payload, 10, idempotencyKey);
+
+    expect(repeatedOrder).toBe(firstOrder);
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(orderRepository.save).toHaveBeenCalledTimes(1);
+    expect(pushNotifications.notifyNewOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects reuse of the same key for a different order', async () => {
+    const idempotencyKey = '123e4567-e89b-42d3-a456-426614174000';
+    attemptRepository.findOne.mockResolvedValue({
+      requestHash: 'different-request-hash',
+      order: { id: 50 },
+    });
+
+    await expect(
+      service.create(
+        {
+          businessId: 20,
+          items: [{ catalogItemId: 5, quantity: 1 }],
+          needNow: true,
+          deliveryDate: null,
+          deliveryTime: null,
+        },
+        10,
+        idempotencyKey,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(pushNotifications.notifyNewOrder).not.toHaveBeenCalled();
+  });
+
+  it('recovers the winning order when two equal requests arrive together', async () => {
+    const idempotencyKey = '123e4567-e89b-42d3-a456-426614174000';
+    const payload = {
+      businessId: 20,
+      items: [{ catalogItemId: 5, quantity: 1 }],
+      needNow: true,
+      deliveryDate: null,
+      deliveryTime: null,
+    };
+    const winningOrder = { id: 51, items: [{ id: 60 }] } as Order;
+    const requestHash = (
+      service as unknown as {
+        requestHash: (value: typeof payload) => string;
+      }
+    ).requestHash(payload);
+    attemptRepository.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ requestHash, order: winningOrder });
+    dataSource.transaction.mockRejectedValueOnce(
+      new QueryFailedError('INSERT', [], {
+        code: '23505',
+        constraint: 'UQ_order_creation_attempt_user_key',
+      }),
+    );
+
+    await expect(service.create(payload, 10, idempotencyKey)).resolves.toBe(
+      winningOrder,
+    );
+
+    expect(attemptRepository.findOne).toHaveBeenCalledTimes(2);
+    expect(pushNotifications.notifyNewOrder).not.toHaveBeenCalled();
   });
 
   it('sets pending and ignores forged legacy price fields at service runtime', async () => {
