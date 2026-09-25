@@ -7,8 +7,9 @@ import {
   Optional,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import {
   CatalogItem,
   CatalogItemKind,
@@ -21,6 +22,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
+import { OrderCreationAttempt } from './order-creation-attempt.entity';
 import { PushNotificationsService } from '../notifications/push-notifications.service';
 import {
   CANCELLATION_REASONS,
@@ -60,6 +62,9 @@ const MAX_ORDER_LINE_SUBTOTAL_CLP = 2_147_483_647;
 const MAX_ORDER_TOTAL_CLP = 9_999_999_999;
 const MAX_ORDER_ITEMS = 20;
 const MAX_ORDER_ITEM_QUANTITY = 99;
+const IDEMPOTENCY_KEY_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const IDEMPOTENCY_UNIQUE_CONSTRAINT = 'UQ_order_creation_attempt_user_key';
 
 function isValidCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -96,6 +101,57 @@ export class OrdersService {
     @Optional()
     private pushNotifications?: PushNotificationsService,
   ) {}
+
+  private requestHash(data: CreateOrderDto): string {
+    const canonicalPayload = {
+      businessId: data.businessId,
+      items: [...data.items]
+        .map(({ catalogItemId, quantity }) => ({ catalogItemId, quantity }))
+        .sort((left, right) => left.catalogItemId - right.catalogItemId),
+      note: data.note ?? null,
+      needNow: data.needNow ?? false,
+      deliveryDate: data.deliveryDate ?? null,
+      deliveryTime: data.deliveryTime ?? null,
+      referencePhoto: data.referencePhoto ?? null,
+    };
+
+    return createHash('sha256')
+      .update(JSON.stringify(canonicalPayload))
+      .digest('hex');
+  }
+
+  private async findIdempotentOrder(
+    userId: number,
+    idempotencyKey: string,
+    requestHash: string,
+  ): Promise<Order | null> {
+    const attempt = await this.dataSource
+      .getRepository(OrderCreationAttempt)
+      .findOne({
+        where: { userId, idempotencyKey },
+        relations: { order: { items: true } },
+      });
+
+    if (!attempt) return null;
+    if (attempt.requestHash !== requestHash) {
+      throw new ConflictException(
+        'La clave de reintento ya fue usada para un pedido diferente',
+      );
+    }
+
+    return attempt.order;
+  }
+
+  private isIdempotencyRace(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) return false;
+    const driverError = error.driverError as
+      | { code?: string; constraint?: string }
+      | undefined;
+    return (
+      driverError?.code === '23505' &&
+      driverError.constraint === IDEMPOTENCY_UNIQUE_CONSTRAINT
+    );
+  }
 
   private async findOne(id: number): Promise<Order> {
     const order = await this.orderRepository.findOne({
@@ -197,9 +253,19 @@ export class OrdersService {
     return undefined;
   }
 
-  async create(data: CreateOrderDto, userId?: number): Promise<Order> {
+  async create(
+    data: CreateOrderDto,
+    userId?: number,
+    idempotencyKey: string = randomUUID(),
+  ): Promise<Order> {
     if (!Number.isInteger(userId) || (userId ?? 0) <= 0) {
       throw new UnauthorizedException('Sesion no valida');
+    }
+
+    if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+      throw new BadRequestException(
+        'Se requiere una clave de reintento valida para crear el pedido',
+      );
     }
 
     if (
@@ -227,6 +293,14 @@ export class OrdersService {
       );
     }
 
+    const requestHash = this.requestHash(data);
+    const existingOrder = await this.findIdempotentOrder(
+      userId as number,
+      idempotencyKey,
+      requestHash,
+    );
+    if (existingOrder) return existingOrder;
+
     const user = await this.usersService.findOne(userId as number);
     if (!user) {
       throw new UnauthorizedException('Usuario no encontrado');
@@ -235,121 +309,147 @@ export class OrdersService {
     await this.businessesService.findPublicOne(data.businessId);
 
     let businessOwnerUserId = 0;
-    const savedOrder = await this.dataSource.transaction(async (manager) => {
-      const business = await manager.findOne(Business, {
-        where: { id: data.businessId, status: 'approved' },
-        select: { id: true, userId: true },
-        lock: { mode: 'pessimistic_read' },
-      });
+    let savedOrder: Order;
+    try {
+      savedOrder = await this.dataSource.transaction(async (manager) => {
+        const business = await manager.findOne(Business, {
+          where: { id: data.businessId, status: 'approved' },
+          select: { id: true, userId: true },
+          lock: { mode: 'pessimistic_read' },
+        });
 
-      if (!business) {
-        throw new NotFoundException('Negocio no encontrado');
-      }
+        if (!business) {
+          throw new NotFoundException('Negocio no encontrado');
+        }
 
-      if (business.userId === userId) {
-        throw new ForbiddenException(
-          'No puedes realizar pedidos en tu propio negocio',
-        );
-      }
-      businessOwnerUserId = business.userId;
+        if (business.userId === userId) {
+          throw new ForbiddenException(
+            'No puedes realizar pedidos en tu propio negocio',
+          );
+        }
+        businessOwnerUserId = business.userId;
 
-      const catalogItems = await manager.find(CatalogItem, {
-        where: {
-          id: In(catalogItemIds),
-          businessId: data.businessId,
-          isActive: true,
-          kind: CatalogItemKind.PRODUCT,
-          pricingMode: CatalogItemPricingMode.FIXED_PRICE,
-        },
-        lock: { mode: 'pessimistic_read' },
-      });
+        const catalogItems = await manager.find(CatalogItem, {
+          where: {
+            id: In(catalogItemIds),
+            businessId: data.businessId,
+            isActive: true,
+            kind: CatalogItemKind.PRODUCT,
+            pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+          },
+          lock: { mode: 'pessimistic_read' },
+        });
 
-      if (catalogItems.length !== catalogItemIds.length) {
-        throw new ConflictException(
-          'El catalogo cambio. Actualiza e intenta nuevamente',
-        );
-      }
-
-      const catalogById = new Map(catalogItems.map((item) => [item.id, item]));
-      const lines = data.items.map((requestedItem) => {
-        const catalogItem = catalogById.get(requestedItem.catalogItemId);
-        if (
-          !catalogItem ||
-          catalogItem.kind !== CatalogItemKind.PRODUCT ||
-          catalogItem.pricingMode !== CatalogItemPricingMode.FIXED_PRICE ||
-          !catalogItem.isActive ||
-          !Number.isInteger(catalogItem.priceClp)
-        ) {
+        if (catalogItems.length !== catalogItemIds.length) {
           throw new ConflictException(
             'El catalogo cambio. Actualiza e intenta nuevamente',
           );
         }
 
-        const subtotalClp =
-          (catalogItem.priceClp as number) * requestedItem.quantity;
-        if (
-          !Number.isSafeInteger(subtotalClp) ||
-          subtotalClp > MAX_ORDER_LINE_SUBTOTAL_CLP
-        ) {
+        const catalogById = new Map(
+          catalogItems.map((item) => [item.id, item]),
+        );
+        const lines = data.items.map((requestedItem) => {
+          const catalogItem = catalogById.get(requestedItem.catalogItemId);
+          if (
+            !catalogItem ||
+            catalogItem.kind !== CatalogItemKind.PRODUCT ||
+            catalogItem.pricingMode !== CatalogItemPricingMode.FIXED_PRICE ||
+            !catalogItem.isActive ||
+            !Number.isInteger(catalogItem.priceClp)
+          ) {
+            throw new ConflictException(
+              'El catalogo cambio. Actualiza e intenta nuevamente',
+            );
+          }
+
+          const subtotalClp =
+            (catalogItem.priceClp as number) * requestedItem.quantity;
+          if (
+            !Number.isSafeInteger(subtotalClp) ||
+            subtotalClp > MAX_ORDER_LINE_SUBTOTAL_CLP
+          ) {
+            throw new BadRequestException(
+              'El subtotal del articulo es demasiado alto',
+            );
+          }
+
+          return {
+            catalogItemId: catalogItem.id,
+            nameSnapshot: catalogItem.name,
+            unitPriceClpSnapshot: catalogItem.priceClp as number,
+            quantity: requestedItem.quantity,
+            subtotalClp,
+          };
+        });
+        const total = lines.reduce((sum, line) => sum + line.subtotalClp, 0);
+
+        if (!Number.isSafeInteger(total) || total > MAX_ORDER_TOTAL_CLP) {
           throw new BadRequestException(
-            'El subtotal del articulo es demasiado alto',
+            'El total del pedido es demasiado alto',
           );
         }
 
-        return {
-          catalogItemId: catalogItem.id,
-          nameSnapshot: catalogItem.name,
-          unitPriceClpSnapshot: catalogItem.priceClp as number,
-          quantity: requestedItem.quantity,
-          subtotalClp,
-        };
-      });
-      const total = lines.reduce((sum, line) => sum + line.subtotalClp, 0);
+        if (!hasValidDeliverySelection(data)) {
+          throw new BadRequestException(
+            'Selecciona entrega inmediata o una fecha y hora validas',
+          );
+        }
 
-      if (!Number.isSafeInteger(total) || total > MAX_ORDER_TOTAL_CLP) {
-        throw new BadRequestException('El total del pedido es demasiado alto');
-      }
-
-      if (!hasValidDeliverySelection(data)) {
-        throw new BadRequestException(
-          'Selecciona entrega inmediata o una fecha y hora validas',
-        );
-      }
-
-      const orderRepository = manager.getRepository(Order);
-      const orderItemRepository = manager.getRepository(OrderItem);
-      const order = orderRepository.create({
-        businessId: data.businessId,
-        userId: userId as number,
-        customerName: user.name ?? null,
-        customerPhone: user.phone ?? null,
-        products: JSON.stringify(
+        const orderRepository = manager.getRepository(Order);
+        const orderItemRepository = manager.getRepository(OrderItem);
+        const attemptRepository = manager.getRepository(OrderCreationAttempt);
+        const order = orderRepository.create({
+          businessId: data.businessId,
+          userId: userId as number,
+          customerName: user.name ?? null,
+          customerPhone: user.phone ?? null,
+          products: JSON.stringify(
+            lines.map((line) => ({
+              name: line.nameSnapshot,
+              price: line.unitPriceClpSnapshot,
+              quantity: line.quantity,
+            })),
+          ),
+          note: data.note ?? null,
+          needNow: data.needNow ?? false,
+          deliveryDate: data.deliveryDate ?? null,
+          deliveryTime: data.deliveryTime ?? null,
+          total,
+          referencePhoto: data.referencePhoto ?? null,
+          status: 'pending',
+          cancellationReason: null,
+        });
+        const savedOrder = await orderRepository.save(order);
+        const orderItems = orderItemRepository.create(
           lines.map((line) => ({
-            name: line.nameSnapshot,
-            price: line.unitPriceClpSnapshot,
-            quantity: line.quantity,
+            ...line,
+            orderId: savedOrder.id,
           })),
-        ),
-        note: data.note ?? null,
-        needNow: data.needNow ?? false,
-        deliveryDate: data.deliveryDate ?? null,
-        deliveryTime: data.deliveryTime ?? null,
-        total,
-        referencePhoto: data.referencePhoto ?? null,
-        status: 'pending',
-        cancellationReason: null,
-      });
-      const savedOrder = await orderRepository.save(order);
-      const orderItems = orderItemRepository.create(
-        lines.map((line) => ({
-          ...line,
-          orderId: savedOrder.id,
-        })),
-      );
-      savedOrder.items = await orderItemRepository.save(orderItems);
+        );
+        savedOrder.items = await orderItemRepository.save(orderItems);
 
-      return savedOrder;
-    });
+        await attemptRepository.save(
+          attemptRepository.create({
+            userId: userId as number,
+            idempotencyKey,
+            requestHash,
+            orderId: savedOrder.id,
+          }),
+        );
+
+        return savedOrder;
+      });
+    } catch (error) {
+      if (!this.isIdempotencyRace(error)) throw error;
+      const concurrentOrder = await this.findIdempotentOrder(
+        userId as number,
+        idempotencyKey,
+        requestHash,
+      );
+      if (!concurrentOrder) throw error;
+      return concurrentOrder;
+    }
 
     await this.pushNotifications?.notifyNewOrder(
       savedOrder,

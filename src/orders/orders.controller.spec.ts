@@ -31,10 +31,18 @@ describe('OrdersController', () => {
     ordersService.create.mockResolvedValue(createdOrder);
 
     await expect(
-      controller.create(body as never, { user: { id: 10, role: 'user' } }),
+      controller.create(
+        body as never,
+        { user: { id: 10, role: 'user' } },
+        '123e4567-e89b-42d3-a456-426614174000',
+      ),
     ).resolves.toEqual(createdOrder);
 
-    expect(ordersService.create).toHaveBeenCalledWith(body, 10);
+    expect(ordersService.create).toHaveBeenCalledWith(
+      body,
+      10,
+      '123e4567-e89b-42d3-a456-426614174000',
+    );
   });
 
   it('passes only status and cancellationReason to the service', async () => {

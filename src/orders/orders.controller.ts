@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseIntPipe,
   Patch,
@@ -30,8 +32,22 @@ export class OrdersController {
       forbidNonWhitelisted: true,
     }),
   )
-  create(@Body() data: CreateOrderDto, @Request() req) {
-    return this.ordersService.create(data, req.user?.id);
+  create(
+    @Body() data: CreateOrderDto,
+    @Request() req,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    if (
+      !idempotencyKey ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        idempotencyKey,
+      )
+    ) {
+      throw new BadRequestException(
+        'Se requiere una clave de reintento valida para crear el pedido',
+      );
+    }
+    return this.ordersService.create(data, req.user?.id, idempotencyKey);
   }
 
   @Get('my-orders')

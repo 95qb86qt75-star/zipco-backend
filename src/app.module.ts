@@ -6,6 +6,7 @@ import { Business } from './businesses/business.entity';
 import { Category } from './categories/category.entity';
 import { Order } from './orders/order.entity';
 import { OrderItem } from './orders/order-item.entity';
+import { OrderCreationAttempt } from './orders/order-creation-attempt.entity';
 import { User } from './users/user.entity';
 import { BusinessesModule } from './businesses/businesses.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -32,6 +33,7 @@ import { PushSubscription } from './notifications/push-subscription.entity';
         Category,
         Order,
         OrderItem,
+        OrderCreationAttempt,
         PushSubscription,
         User,
         VerificationCode,
