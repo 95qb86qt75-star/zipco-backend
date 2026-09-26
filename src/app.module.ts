@@ -21,6 +21,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { QaAuthModule } from './qa/qa-auth.module';
 import { PushNotificationsModule } from './notifications/push-notifications.module';
 import { PushSubscription } from './notifications/push-subscription.entity';
+import { LocationsModule } from './locations/locations.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { PushSubscription } from './notifications/push-subscription.entity';
     DevAuthModule.register(),
     QaAuthModule.register(),
     PushNotificationsModule,
+    LocationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
