@@ -17,6 +17,7 @@ describe('BusinessesController HTTP authorization', () => {
     approve: jest.fn(),
     reject: jest.fn(),
     findPending: jest.fn().mockResolvedValue([{ id: 1, status: 'pending' }]),
+    findNearby: jest.fn().mockResolvedValue([]),
   };
   const userRepository = {
     findOne: jest.fn(),
@@ -43,6 +44,28 @@ describe('BusinessesController HTTP authorization', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  it('rejects public searches shorter than three characters', async () => {
+    await request(app.getHttpServer())
+      .get('/businesses/nearby?lat=-33.45&lng=-70.66&radius=10&search=Ev')
+      .expect(400);
+    expect(businessesService.findNearby).not.toHaveBeenCalled();
+  });
+
+  it('trims and forwards a valid public search', async () => {
+    await request(app.getHttpServer())
+      .get(
+        '/businesses/nearby?lat=-33.45&lng=-70.66&radius=10&search=%20tortas%20',
+      )
+      .expect(200);
+    expect(businessesService.findNearby).toHaveBeenCalledWith(
+      -33.45,
+      -70.66,
+      10,
+      undefined,
+      'tortas',
+    );
   });
 
   it.each(['/businesses/1/approve', '/businesses/1/reject'])(

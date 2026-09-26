@@ -153,12 +153,19 @@ export class BusinessesController {
       throw new BadRequestException('Radio de búsqueda inválido');
     }
 
+    const normalizedSearch = search?.trim();
+    if (normalizedSearch && normalizedSearch.length < 3) {
+      throw new BadRequestException(
+        'La búsqueda debe tener al menos 3 caracteres',
+      );
+    }
+
     return this.businessesService.findNearby(
       parsedLat,
       parsedLng,
       parsedRadius,
       categoryId,
-      search,
+      normalizedSearch,
     );
   }
 

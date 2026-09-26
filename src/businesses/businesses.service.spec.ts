@@ -82,6 +82,22 @@ describe('BusinessesService', () => {
     expect(service).toBeDefined();
   });
 
+  it('findNearby() searches business name, configured keywords and description', async () => {
+    queryBuilder.getRawAndEntities.mockResolvedValue({ entities: [], raw: [] });
+
+    await service.findNearby(-33.45, -70.66, 10, undefined, 'tortas');
+
+    const searchCall = queryBuilder.andWhere.mock.calls.find(([clause]) =>
+      String(clause).includes('business.keywords'),
+    );
+    expect(searchCall).toBeDefined();
+    expect(searchCall?.[1]).toEqual({ search: '%tortas%' });
+    const searchClause = searchCall?.[0] ?? '';
+    expect(searchClause).toContain('business.name');
+    expect(searchClause).toContain('business.keywords');
+    expect(searchClause).toContain('business.description');
+  });
+
   it('findAll() returns only approved and complete businesses with an active catalog', async () => {
     const publicBusinesses = [
       {
