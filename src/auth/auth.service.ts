@@ -50,6 +50,7 @@ export class AuthService {
     const recentRequests = await this.verificationCodeRepository.count({
       where: {
         phone: normalizedPhone,
+        purpose: 'login',
         createdAt: MoreThanOrEqual(tenMinutesAgo),
       },
     });
@@ -66,6 +67,7 @@ export class AuthService {
     await this.verificationCodeRepository.update(
       {
         phone: normalizedPhone,
+        purpose: 'login',
         consumed: false,
       },
       {
@@ -79,6 +81,8 @@ export class AuthService {
 
     const verificationCode = this.verificationCodeRepository.create({
       phone: normalizedPhone,
+      purpose: 'login',
+      userId: null,
       codeHash,
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       consumed: false,
@@ -116,6 +120,7 @@ export class AuthService {
     const verificationCode = await this.verificationCodeRepository.findOne({
       where: {
         phone: normalizedPhone,
+        purpose: 'login',
         consumed: false,
         expiresAt: MoreThan(new Date()),
       },
@@ -184,6 +189,7 @@ export class AuthService {
     const verificationCode = await this.verificationCodeRepository.findOne({
       where: {
         phone: normalizedPhone,
+        purpose: 'login',
         consumed: false,
         verifiedAt: MoreThan(tenMinutesAgo),
       },
@@ -224,6 +230,117 @@ export class AuthService {
     });
 
     return this.generateToken(user);
+  }
+
+  async requestPhoneChange(userId: number, phone: string) {
+    const normalizedPhone = this.normalizePhone(phone);
+    const existingUser = await this.usersService.findByPhone(normalizedPhone);
+    if (existingUser && existingUser.id !== userId) {
+      throw new ConflictException('Este teléfono ya está asociado a otra cuenta');
+    }
+
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const recentRequests = await this.verificationCodeRepository.count({
+      where: {
+        phone: normalizedPhone,
+        purpose: 'change_phone',
+        userId,
+        createdAt: MoreThanOrEqual(tenMinutesAgo),
+      },
+    });
+    if (recentRequests >= 3) {
+      throw new HttpException(
+        'Has solicitado demasiados códigos. Intenta nuevamente más tarde.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    await this.verificationCodeRepository.update(
+      { purpose: 'change_phone', userId, consumed: false },
+      { consumed: true, consumedAt: new Date() },
+    );
+
+    const code = this.generateSixDigitCode();
+    const verificationCode = this.verificationCodeRepository.create({
+      phone: normalizedPhone,
+      purpose: 'change_phone',
+      userId,
+      codeHash: await bcrypt.hash(code, 10),
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      consumed: false,
+      attempts: 0,
+      verifiedAt: null,
+      consumedAt: null,
+    });
+    await this.verificationCodeRepository.save(verificationCode);
+
+    try {
+      await this.sendVerificationSms(normalizedPhone, code);
+    } catch (error) {
+      await this.verificationCodeRepository.update(verificationCode.id, {
+        consumed: true,
+        consumedAt: new Date(),
+      });
+      throw error;
+    }
+
+    return { message: 'Código enviado correctamente' };
+  }
+
+  async confirmPhoneChange(userId: number, phone: string, code: string) {
+    const normalizedPhone = this.normalizePhone(phone);
+    const normalizedCode = code?.replace(/\D/g, '') ?? '';
+    if (normalizedCode.length !== 6) {
+      throw new UnauthorizedException('Código incorrecto, verifica los dígitos');
+    }
+
+    const verificationCode = await this.verificationCodeRepository.findOne({
+      where: {
+        phone: normalizedPhone,
+        purpose: 'change_phone',
+        userId,
+        consumed: false,
+        expiresAt: MoreThan(new Date()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!verificationCode) {
+      throw new UnauthorizedException('Tu código expiró, solicita uno nuevo');
+    }
+
+    const codeMatches = await bcrypt.compare(normalizedCode, verificationCode.codeHash);
+    if (!codeMatches) {
+      const attempts = verificationCode.attempts + 1;
+      const shouldConsume = attempts >= 5;
+      await this.verificationCodeRepository.update(verificationCode.id, {
+        attempts,
+        consumed: shouldConsume,
+        consumedAt: shouldConsume ? new Date() : null,
+      });
+      throw new UnauthorizedException('Código incorrecto, verifica los dígitos');
+    }
+
+    const existingUser = await this.usersService.findByPhone(normalizedPhone);
+    if (existingUser && existingUser.id !== userId) {
+      throw new ConflictException('Este teléfono ya está asociado a otra cuenta');
+    }
+
+    const currentUser = await this.usersService.findOne(userId);
+    if (!currentUser) throw new UnauthorizedException('Usuario no encontrado');
+    const oldAutomaticEmail = currentUser.phone ? `${currentUser.phone}@zipco.cl` : null;
+    const shouldUpdateEmail = !currentUser.email || currentUser.email === oldAutomaticEmail;
+    const updatedUser = await this.usersService.update(userId, {
+      phone: normalizedPhone,
+      ...(shouldUpdateEmail ? { email: `${normalizedPhone}@zipco.cl` } : {}),
+    });
+
+    await this.verificationCodeRepository.update(verificationCode.id, {
+      consumed: true,
+      consumedAt: new Date(),
+      verifiedAt: new Date(),
+    });
+
+    return this.generateToken(updatedUser);
   }
 
   private normalizePhone(phone: string): string {

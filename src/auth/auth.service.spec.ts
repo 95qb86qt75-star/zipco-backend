@@ -13,6 +13,9 @@ describe('AuthService', () => {
     create: jest.Mock;
     findByEmail: jest.Mock;
     findByEmailWithPassword: jest.Mock;
+    findByPhone: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
   };
   let jwtService: {
     sign: jest.Mock;
@@ -40,6 +43,9 @@ describe('AuthService', () => {
       create: jest.fn(),
       findByEmail: jest.fn(),
       findByEmailWithPassword: jest.fn(),
+      findByPhone: jest.fn(),
+      findOne: jest.fn(),
+      update: jest.fn(),
     };
 
     jwtService = {
@@ -155,12 +161,14 @@ describe('AuthService', () => {
     expect(verificationCodeRepository.count).toHaveBeenCalledWith({
       where: {
         phone: '56965169255',
+        purpose: 'login',
         createdAt: expect.any(Object),
       },
     });
     expect(verificationCodeRepository.update).toHaveBeenCalledWith(
       {
         phone: '56965169255',
+        purpose: 'login',
         consumed: false,
       },
       {
@@ -170,6 +178,8 @@ describe('AuthService', () => {
     );
     expect(verificationCodeRepository.create).toHaveBeenCalledWith({
       phone: '56965169255',
+      purpose: 'login',
+      userId: null,
       codeHash: expect.any(String),
       expiresAt: expect.any(Date),
       consumed: false,
@@ -206,6 +216,7 @@ describe('AuthService', () => {
     expect(verificationCodeRepository.count).toHaveBeenCalledWith({
       where: {
         phone: '56965169255',
+        purpose: 'login',
         createdAt: expect.any(Object),
       },
     });
@@ -237,6 +248,7 @@ describe('AuthService', () => {
     expect(verificationCodeRepository.count).toHaveBeenCalledWith({
       where: {
         phone: '56965169255',
+        purpose: 'login',
         createdAt: expect.any(Object),
       },
     });
@@ -258,6 +270,60 @@ describe('AuthService', () => {
       expect(verificationCodeRepository.save).not.toHaveBeenCalled();
     },
   );
+
+  it('requestPhoneChange() creates a code isolated from login codes', async () => {
+    const verificationCode = { id: 20, phone: '56912345678' };
+    usersService.findByPhone.mockResolvedValue(null);
+    verificationCodeRepository.count.mockResolvedValue(0);
+    verificationCodeRepository.create.mockReturnValue(verificationCode);
+    verificationCodeRepository.save.mockResolvedValue(verificationCode);
+    jest.spyOn(service as any, 'generateSixDigitCode').mockReturnValue('123456');
+    jest.spyOn(service as any, 'sendVerificationSms').mockResolvedValue(undefined);
+
+    await expect(service.requestPhoneChange(1, '912345678')).resolves.toEqual({
+      message: 'Código enviado correctamente',
+    });
+
+    expect(verificationCodeRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phone: '56912345678',
+        purpose: 'change_phone',
+        userId: 1,
+      }),
+    );
+  });
+
+  it('confirmPhoneChange() updates the verified phone and automatic login email', async () => {
+    verificationCodeRepository.findOne.mockResolvedValue({
+      id: 21,
+      phone: '56912345678',
+      codeHash: await bcrypt.hash('123456', 10),
+      attempts: 0,
+    });
+    usersService.findByPhone.mockResolvedValue(null);
+    usersService.findOne.mockResolvedValue({
+      ...user,
+      phone: '56965169255',
+    });
+    usersService.update.mockResolvedValue({
+      ...user,
+      phone: '56912345678',
+      email: '56912345678@zipco.cl',
+    });
+
+    await expect(
+      service.confirmPhoneChange(1, '912345678', '123456'),
+    ).resolves.toMatchObject({ access_token: 'jwt-token' });
+
+    expect(usersService.update).toHaveBeenCalledWith(1, {
+      phone: '56912345678',
+      email: '56912345678@zipco.cl',
+    });
+    expect(verificationCodeRepository.update).toHaveBeenCalledWith(
+      21,
+      expect.objectContaining({ consumed: true }),
+    );
+  });
 
   it('requestCode() blocks after 3 requests in 10 minutes', async () => {
     verificationCodeRepository.count.mockResolvedValue(3);
