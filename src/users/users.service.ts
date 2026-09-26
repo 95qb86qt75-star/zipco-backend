@@ -28,6 +28,11 @@ export class UsersService {
     return user ? this.toUserResponse(user) : null;
   }
 
+  async findByPhone(phone: string): Promise<UserResponse | null> {
+    const user = await this.userRepository.findOne({ where: { phone } });
+    return user ? this.toUserResponse(user) : null;
+  }
+
   async findByEmailWithPassword(email: string): Promise<User | null> {
     return this.userRepository
       .createQueryBuilder('user')

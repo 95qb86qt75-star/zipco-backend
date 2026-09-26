@@ -8,6 +8,12 @@ export class VerificationCode {
   @Column({ type: 'varchar' })
   phone: string;
 
+  @Column({ type: 'varchar', default: 'login' })
+  purpose: string;
+
+  @Column({ type: 'int', nullable: true })
+  userId: number | null;
+
   @Column({ type: 'varchar' })
   codeHash: string;
 
