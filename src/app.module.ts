@@ -20,6 +20,7 @@ import { CatalogItem } from './catalog/catalog-item.entity';
 import { CatalogModule } from './catalog/catalog.module';
 import { PushNotificationsModule } from './notifications/push-notifications.module';
 import { PushSubscription } from './notifications/push-subscription.entity';
+import { LocationsModule } from './locations/locations.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { PushSubscription } from './notifications/push-subscription.entity';
     CatalogModule,
     DevAuthModule.register(),
     PushNotificationsModule,
+    LocationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
