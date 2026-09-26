@@ -260,7 +260,9 @@ export class AuthService {
       { consumed: true, consumedAt: new Date() },
     );
 
-    const code = this.generateSixDigitCode();
+    const isQaSimulation =
+      process.env.APP_ENVIRONMENT === 'qa' && process.env.ENABLE_QA_AUTH === 'true';
+    const code = isQaSimulation ? '000000' : this.generateSixDigitCode();
     const verificationCode = this.verificationCodeRepository.create({
       phone: normalizedPhone,
       purpose: 'change_phone',
@@ -274,17 +276,22 @@ export class AuthService {
     });
     await this.verificationCodeRepository.save(verificationCode);
 
-    try {
-      await this.sendVerificationSms(normalizedPhone, code);
-    } catch (error) {
-      await this.verificationCodeRepository.update(verificationCode.id, {
-        consumed: true,
-        consumedAt: new Date(),
-      });
-      throw error;
+    if (!isQaSimulation) {
+      try {
+        await this.sendVerificationSms(normalizedPhone, code);
+      } catch (error) {
+        await this.verificationCodeRepository.update(verificationCode.id, {
+          consumed: true,
+          consumedAt: new Date(),
+        });
+        throw error;
+      }
     }
 
-    return { message: 'Código enviado correctamente' };
+    return {
+      message: isQaSimulation ? 'Código QA generado correctamente' : 'Código enviado correctamente',
+      ...(isQaSimulation ? { qaCode: code } : {}),
+    };
   }
 
   async confirmPhoneChange(userId: number, phone: string, code: string) {
