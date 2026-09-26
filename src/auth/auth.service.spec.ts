@@ -293,6 +293,23 @@ describe('AuthService', () => {
     );
   });
 
+  it('requestCode() simulates login SMS only in the QA environment', async () => {
+    process.env.APP_ENVIRONMENT = 'qa';
+    process.env.ENABLE_QA_AUTH = 'true';
+    const verificationCode = { id: 11, phone: '56912345678' };
+    verificationCodeRepository.count.mockResolvedValue(0);
+    verificationCodeRepository.create.mockReturnValue(verificationCode);
+    verificationCodeRepository.save.mockResolvedValue(verificationCode);
+    const sendSms = jest.spyOn(service as any, 'sendVerificationSms');
+
+    await expect(service.requestCode('912345678')).resolves.toEqual({
+      message: 'Código QA generado correctamente',
+      qaCode: '000000',
+    });
+
+    expect(sendSms).not.toHaveBeenCalled();
+  });
+
   it('requestPhoneChange() simulates SMS only in the QA environment', async () => {
     process.env.APP_ENVIRONMENT = 'qa';
     process.env.ENABLE_QA_AUTH = 'true';
