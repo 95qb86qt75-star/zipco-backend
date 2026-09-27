@@ -11,6 +11,7 @@ import { OrderItem } from '../orders/order-item.entity';
 import { OrderCreationAttempt } from '../orders/order-creation-attempt.entity';
 import { User } from '../users/user.entity';
 import { PushSubscription } from '../notifications/push-subscription.entity';
+import { QuoteRequest } from '../quotes/quote-request.entity';
 import { getMigrationDatabaseConfig } from './migration-config';
 
 const databaseConfig = getMigrationDatabaseConfig();
@@ -29,6 +30,7 @@ export default new DataSource({
     PushSubscription,
     User,
     VerificationCode,
+    QuoteRequest,
   ],
   migrations: [join(__dirname, '..', 'migrations', '*.{ts,js}')],
   migrationsTableName: 'migrations',

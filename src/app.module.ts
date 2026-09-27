@@ -22,6 +22,8 @@ import { QaAuthModule } from './qa/qa-auth.module';
 import { PushNotificationsModule } from './notifications/push-notifications.module';
 import { PushSubscription } from './notifications/push-subscription.entity';
 import { LocationsModule } from './locations/locations.module';
+import { QuoteRequest } from './quotes/quote-request.entity';
+import { QuotesModule } from './quotes/quotes.module';
 
 @Module({
   imports: [
@@ -38,6 +40,7 @@ import { LocationsModule } from './locations/locations.module';
         PushSubscription,
         User,
         VerificationCode,
+        QuoteRequest,
       ],
       synchronize: false,
       ssl:
@@ -51,6 +54,7 @@ import { LocationsModule } from './locations/locations.module';
     AuthModule,
     OrdersModule,
     CatalogModule,
+    QuotesModule,
     DevAuthModule.register(),
     QaAuthModule.register(),
     PushNotificationsModule,
