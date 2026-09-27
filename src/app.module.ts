@@ -24,6 +24,8 @@ import { PushSubscription } from './notifications/push-subscription.entity';
 import { LocationsModule } from './locations/locations.module';
 import { QuoteRequest } from './quotes/quote-request.entity';
 import { QuotesModule } from './quotes/quotes.module';
+import { Favorite } from './favorites/favorite.entity';
+import { FavoritesModule } from './favorites/favorites.module';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { QuotesModule } from './quotes/quotes.module';
         User,
         VerificationCode,
         QuoteRequest,
+        Favorite,
       ],
       synchronize: false,
       ssl:
@@ -55,6 +58,7 @@ import { QuotesModule } from './quotes/quotes.module';
     OrdersModule,
     CatalogModule,
     QuotesModule,
+    FavoritesModule,
     DevAuthModule.register(),
     QaAuthModule.register(),
     PushNotificationsModule,
