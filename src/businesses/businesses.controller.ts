@@ -133,6 +133,7 @@ export class BusinessesController {
     @Query('radius') radius: unknown,
     @Query('categoryId') categoryId?: number,
     @Query('search') search?: string,
+    @Query('catalogKind') catalogKind?: string,
   ) {
     const parsedLat = this.parseFiniteNumber(lat);
     const parsedLng = this.parseFiniteNumber(lng);
@@ -160,12 +161,17 @@ export class BusinessesController {
       );
     }
 
+    if (catalogKind && !['product', 'service'].includes(catalogKind)) {
+      throw new BadRequestException('Tipo de catalogo invalido');
+    }
+
     return this.businessesService.findNearby(
       parsedLat,
       parsedLng,
       parsedRadius,
       categoryId,
       normalizedSearch,
+      catalogKind as 'product' | 'service' | undefined,
     );
   }
 

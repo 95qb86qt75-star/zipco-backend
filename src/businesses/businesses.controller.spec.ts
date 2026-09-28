@@ -180,7 +180,41 @@ describe('BusinessesController', () => {
       10,
       undefined,
       'Zipco',
+      undefined,
     );
+  });
+
+  it('findNearby() forwards the service catalog filter', () => {
+    controller.findNearby(
+      '-33.4478',
+      '-70.6395',
+      '10',
+      undefined,
+      undefined,
+      'service',
+    );
+    expect(businessesService.findNearby).toHaveBeenCalledWith(
+      -33.4478,
+      -70.6395,
+      10,
+      undefined,
+      undefined,
+      'service',
+    );
+  });
+
+  it('findNearby() rejects an unknown catalog filter', () => {
+    expect(() =>
+      controller.findNearby(
+        '-33.4478',
+        '-70.6395',
+        '10',
+        undefined,
+        undefined,
+        'admin',
+      ),
+    ).toThrow('Tipo de catalogo invalido');
+    expect(businessesService.findNearby).not.toHaveBeenCalled();
   });
 
   it('findNearby() preserves the canonical owner userId in its response', async () => {

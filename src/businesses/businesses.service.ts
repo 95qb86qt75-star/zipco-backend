@@ -217,6 +217,7 @@ export class BusinessesService {
     radiusKm: number,
     categoryId?: number,
     search?: string,
+    catalogKind?: 'product' | 'service',
   ): Promise<PublicBusinessResponse[]> {
     const distanceExpression =
       '(6371 * acos(cos(radians(:lat)) * cos(radians(business.latitude)) * cos(radians(business.longitude) - radians(:lng)) + sin(radians(:lat)) * sin(radians(business.latitude))))';
@@ -230,6 +231,17 @@ export class BusinessesService {
         radius: radiusKm,
       })
       .orderBy(distanceExpression, 'ASC');
+
+    if (catalogKind) {
+      query
+        .innerJoin(
+          'business.catalogItems',
+          'catalogItem',
+          'catalogItem.kind = :catalogKind AND catalogItem.isActive = true',
+          { catalogKind },
+        )
+        .distinct(true);
+    }
 
     if (categoryId) {
       query.andWhere('business.categoryId = :categoryId', { categoryId });
