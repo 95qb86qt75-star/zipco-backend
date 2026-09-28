@@ -334,7 +334,6 @@ export class OrdersService {
             id: In(catalogItemIds),
             businessId: data.businessId,
             isActive: true,
-            kind: CatalogItemKind.PRODUCT,
             pricingMode: CatalogItemPricingMode.FIXED_PRICE,
           },
           lock: { mode: 'pessimistic_read' },
@@ -346,6 +345,19 @@ export class OrdersService {
           );
         }
 
+        const requestedKinds = new Set(catalogItems.map((item) => item.kind));
+        if (requestedKinds.size !== 1)
+          throw new BadRequestException(
+            'No puedes mezclar productos y servicios',
+          );
+        const orderType = catalogItems[0]?.kind;
+        if (
+          orderType === CatalogItemKind.SERVICE &&
+          (data.items.length !== 1 || data.items[0].quantity !== 1)
+        ) {
+          throw new BadRequestException('Solicita un servicio a la vez');
+        }
+
         const catalogById = new Map(
           catalogItems.map((item) => [item.id, item]),
         );
@@ -353,7 +365,7 @@ export class OrdersService {
           const catalogItem = catalogById.get(requestedItem.catalogItemId);
           if (
             !catalogItem ||
-            catalogItem.kind !== CatalogItemKind.PRODUCT ||
+            catalogItem.kind !== orderType ||
             catalogItem.pricingMode !== CatalogItemPricingMode.FIXED_PRICE ||
             !catalogItem.isActive ||
             !Number.isInteger(catalogItem.priceClp)
@@ -402,6 +414,7 @@ export class OrdersService {
         const order = orderRepository.create({
           businessId: data.businessId,
           userId: userId as number,
+          orderType,
           customerName: user.name ?? null,
           customerPhone: user.phone ?? null,
           products: JSON.stringify(

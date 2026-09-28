@@ -18,6 +18,9 @@ export class Order {
   @Column()
   userId: number;
 
+  @Column({ type: 'varchar', length: 20, default: 'product' })
+  orderType: 'product' | 'service';
+
   @Column({ type: 'varchar', nullable: true })
   customerName: string | null;
 

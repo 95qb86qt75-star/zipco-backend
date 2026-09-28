@@ -304,7 +304,7 @@ describe('OrdersService secure creation', () => {
     usersService.findOne.mockResolvedValue(null);
     await expect(
       service.create(
-        { businessId: 20, items: [{ catalogItemId: 5, quantity: 1 }] },
+        { businessId: 20, items: [{ catalogItemId: 5, quantity: 1 }], needNow: true },
         404,
       ),
     ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -349,7 +349,7 @@ describe('OrdersService secure creation', () => {
     },
   );
 
-  it('rejects a fixed-price service while its request flow is unavailable', async () => {
+  it('creates a fixed-price service request with quantity one', async () => {
     manager.find.mockResolvedValue([
       {
         ...chocolateCake,
@@ -359,11 +359,25 @@ describe('OrdersService secure creation', () => {
 
     await expect(
       service.create(
-        { businessId: 20, items: [{ catalogItemId: 5, quantity: 1 }] },
+        { businessId: 20, items: [{ catalogItemId: 5, quantity: 1 }], needNow: true },
         10,
       ),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(orderRepository.save).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ orderType: 'service', total: 12000 });
+    expect(orderRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ orderType: 'service' }),
+    );
+  });
+
+  it('rejects service quantities greater than one', async () => {
+    manager.find.mockResolvedValue([
+      { ...chocolateCake, kind: CatalogItemKind.SERVICE },
+    ]);
+    await expect(
+      service.create(
+        { businessId: 20, items: [{ catalogItemId: 5, quantity: 2 }] },
+        10,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects duplicate IDs before opening a transaction', async () => {
@@ -425,7 +439,6 @@ describe('OrdersService secure creation', () => {
       CatalogItem,
       expect.objectContaining({
         where: expect.objectContaining({
-          kind: CatalogItemKind.PRODUCT,
           pricingMode: CatalogItemPricingMode.FIXED_PRICE,
         }),
         lock: { mode: 'pessimistic_read' },
