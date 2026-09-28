@@ -233,6 +233,9 @@ export class BusinessesService {
       .orderBy(distanceExpression, 'ASC');
 
     if (catalogKind) {
+      query.andWhere('business.type = :providerType', {
+        providerType: catalogKind === 'service' ? 'Servicio' : 'Negocio',
+      });
       query
         .innerJoin(
           'business.catalogItems',

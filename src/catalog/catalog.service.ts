@@ -8,7 +8,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business } from '../businesses/business.entity';
 import { BusinessesService } from '../businesses/businesses.service';
-import { CatalogItem, CatalogItemPricingMode } from './catalog-item.entity';
+import {
+  CatalogItem,
+  CatalogItemKind,
+  CatalogItemPricingMode,
+} from './catalog-item.entity';
 import { CreateCatalogItemDto } from './dto/create-catalog-item.dto';
 import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
 
@@ -27,10 +31,10 @@ export class CatalogService {
   private async ensureOwner(
     businessId: number,
     currentUser?: CurrentUser,
-  ): Promise<void> {
+  ): Promise<Business> {
     const business = await this.businessRepository.findOne({
       where: { id: businessId },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, type: true },
     });
 
     if (!business) {
@@ -40,6 +44,26 @@ export class CatalogService {
     if (!currentUser?.id || business.userId !== currentUser.id) {
       throw new ForbiddenException(
         'No tienes permiso para administrar este catalogo',
+      );
+    }
+
+    return business;
+  }
+
+  private ensureKindMatchesProvider(
+    business: Business,
+    kind: CatalogItemKind,
+  ): void {
+    const expectedKind =
+      business.type === 'Servicio'
+        ? CatalogItemKind.SERVICE
+        : CatalogItemKind.PRODUCT;
+
+    if (kind !== expectedKind) {
+      throw new BadRequestException(
+        business.type === 'Servicio'
+          ? 'Un perfil de Servicio solo puede publicar servicios'
+          : 'Un perfil de Negocio solo puede publicar productos',
       );
     }
   }
@@ -120,7 +144,8 @@ export class CatalogService {
     data: CreateCatalogItemDto,
     currentUser?: CurrentUser,
   ): Promise<CatalogItem> {
-    await this.ensureOwner(businessId, currentUser);
+    const business = await this.ensureOwner(businessId, currentUser);
+    this.ensureKindMatchesProvider(business, data.kind);
     const previous = await this.catalogRepository.findOne({
       where: { businessId },
       order: { displayOrder: 'DESC', id: 'DESC' },
@@ -159,6 +184,17 @@ export class CatalogService {
     const item = await this.findOwnedItem(businessId, itemId, currentUser);
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Debes enviar al menos un campo editable');
+    }
+
+    if (data.kind !== undefined) {
+      const business = await this.businessRepository.findOne({
+        where: { id: businessId },
+        select: { id: true, type: true },
+      });
+      if (!business) {
+        throw new NotFoundException('Negocio no encontrado');
+      }
+      this.ensureKindMatchesProvider(business, data.kind);
     }
 
     const pricingMode = data.pricingMode ?? item.pricingMode;

@@ -23,7 +23,7 @@ describe('CatalogService', () => {
   const owner = { id: 10, role: 'user' };
   const otherUser = { id: 99, role: 'user' };
   const adminWhoIsNotOwner = { id: 99, role: 'admin' };
-  const business = { id: 1, userId: owner.id } as Business;
+  const business = { id: 1, userId: owner.id, type: 'Negocio' } as Business;
   const fixedItem = {
     id: 5,
     businessId: business.id,
@@ -212,7 +212,7 @@ describe('CatalogService', () => {
         {
           name: 'Servicio desde',
           ...requiredDetails,
-          kind: CatalogItemKind.SERVICE,
+          kind: CatalogItemKind.PRODUCT,
           pricingMode: CatalogItemPricingMode.QUOTE,
           startingPriceClp: 100,
         },
@@ -228,7 +228,7 @@ describe('CatalogService', () => {
         {
           name: 'Personalizado',
           ...requiredDetails,
-          kind: CatalogItemKind.SERVICE,
+          kind: CatalogItemKind.PRODUCT,
           pricingMode: CatalogItemPricingMode.QUOTE,
         },
         owner,
@@ -241,7 +241,7 @@ describe('CatalogService', () => {
         {
           name: 'Galeria',
           ...requiredDetails,
-          kind: CatalogItemKind.SERVICE,
+          kind: CatalogItemKind.PRODUCT,
           pricingMode: CatalogItemPricingMode.VIEW,
         },
         owner,
@@ -257,6 +257,55 @@ describe('CatalogService', () => {
     await expect(
       service.update(1, 999, { name: 'Nuevo' }, owner),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects services in a Negocio catalog', async () => {
+    await expect(
+      service.create(
+        1,
+        {
+          name: 'Instalacion',
+          ...requiredDetails,
+          kind: CatalogItemKind.SERVICE,
+          pricingMode: CatalogItemPricingMode.QUOTE,
+        },
+        owner,
+      ),
+    ).rejects.toThrow('Un perfil de Negocio solo puede publicar productos');
+  });
+
+  it('allows only services in a Servicio catalog', async () => {
+    businessRepository.findOne.mockResolvedValue({
+      ...business,
+      type: 'Servicio',
+    });
+
+    await expect(
+      service.create(
+        1,
+        {
+          name: 'Reparacion',
+          ...requiredDetails,
+          kind: CatalogItemKind.SERVICE,
+          pricingMode: CatalogItemPricingMode.QUOTE,
+        },
+        owner,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ kind: 'service' }));
+
+    await expect(
+      service.create(
+        1,
+        {
+          name: 'Repuesto',
+          ...requiredDetails,
+          kind: CatalogItemKind.PRODUCT,
+          pricingMode: CatalogItemPricingMode.FIXED_PRICE,
+          priceClp: 1000,
+        },
+        owner,
+      ),
+    ).rejects.toThrow('Un perfil de Servicio solo puede publicar servicios');
   });
 
   it('requires an explicit price change when switching to fixed price', async () => {
