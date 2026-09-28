@@ -78,4 +78,12 @@ export class CreateBusinessDto {
   @IsOptional()
   @IsBoolean()
   showOnlyDistance?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  offersOnSite?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  offersAtCustomerLocation?: boolean;
 }

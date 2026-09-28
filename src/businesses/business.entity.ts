@@ -63,6 +63,12 @@ export class Business {
   @Column({ default: false })
   showOnlyDistance: boolean;
 
+  @Column({ type: 'boolean', nullable: true })
+  offersOnSite: boolean | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  offersAtCustomerLocation: boolean | null;
+
   @Column({ default: 'pending' })
   status: string;
 

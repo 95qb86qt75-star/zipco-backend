@@ -198,6 +198,26 @@ export class BusinessesService {
   async approve(id: number): Promise<Business> {
     const business = await this.findOne(id);
 
+    if (
+      business.type === 'Servicio' &&
+      (business.offersOnSite === null ||
+        business.offersAtCustomerLocation === null)
+    ) {
+      throw new BadRequestException(
+        'El servicio debe confirmar sus dos modalidades de atencion',
+      );
+    }
+
+    if (
+      business.type === 'Servicio' &&
+      !business.offersOnSite &&
+      !business.offersAtCustomerLocation
+    ) {
+      throw new BadRequestException(
+        'El servicio debe ofrecer al menos una modalidad de atencion',
+      );
+    }
+
     business.status = 'approved';
 
     return this.businessRepository.save(business);

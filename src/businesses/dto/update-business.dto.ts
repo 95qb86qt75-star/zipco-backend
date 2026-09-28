@@ -80,4 +80,12 @@ export class UpdateBusinessDto {
   @IsOptional()
   @IsBoolean()
   showOnlyDistance?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  offersOnSite?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  offersAtCustomerLocation?: boolean;
 }

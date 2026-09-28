@@ -81,6 +81,12 @@ export class BusinessesController {
     if (data.showOnlyDistance !== undefined) {
       safeData.showOnlyDistance = data.showOnlyDistance;
     }
+    if (data.offersOnSite !== undefined) {
+      safeData.offersOnSite = data.offersOnSite;
+    }
+    if (data.offersAtCustomerLocation !== undefined) {
+      safeData.offersAtCustomerLocation = data.offersAtCustomerLocation;
+    }
 
     return safeData;
   }

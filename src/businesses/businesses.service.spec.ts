@@ -315,4 +315,47 @@ describe('BusinessesService', () => {
       NotFoundException,
     );
   });
+
+  it('approve() requires both attendance answers for a Servicio profile', async () => {
+    businessRepository.findOne.mockResolvedValue({
+      ...existingBusiness,
+      type: 'Servicio',
+      offersOnSite: null,
+      offersAtCustomerLocation: true,
+    });
+
+    await expect(service.approve(1)).rejects.toThrow(
+      'El servicio debe confirmar sus dos modalidades de atencion',
+    );
+    expect(businessRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('approve() requires at least one available attendance mode for Servicio', async () => {
+    businessRepository.findOne.mockResolvedValue({
+      ...existingBusiness,
+      type: 'Servicio',
+      offersOnSite: false,
+      offersAtCustomerLocation: false,
+    });
+
+    await expect(service.approve(1)).rejects.toThrow(
+      'El servicio debe ofrecer al menos una modalidad de atencion',
+    );
+    expect(businessRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('approve() accepts Servicio with both answers and one available mode', async () => {
+    const serviceBusiness = {
+      ...existingBusiness,
+      type: 'Servicio',
+      offersOnSite: false,
+      offersAtCustomerLocation: true,
+    } as Business;
+    businessRepository.findOne.mockResolvedValue(serviceBusiness);
+    businessRepository.save.mockImplementation(async (value) => value);
+
+    await expect(service.approve(1)).resolves.toMatchObject({
+      status: 'approved',
+    });
+  });
 });
