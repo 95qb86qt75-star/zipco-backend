@@ -65,6 +65,7 @@ describe('BusinessesController HTTP authorization', () => {
       10,
       undefined,
       'tortas',
+      undefined,
     );
   });
 
