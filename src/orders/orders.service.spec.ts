@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { BusinessesService } from '../businesses/businesses.service';
 import { UsersService } from '../users/users.service';
+import { PushNotificationsService } from '../notifications/push-notifications.service';
 import { Order } from './order.entity';
 import { OrdersService } from './orders.service';
 
@@ -22,6 +23,7 @@ describe('OrdersService', () => {
   let usersService: {
     findOne: jest.Mock;
   };
+  let pushNotifications: { notifyOrderStatusChanged: jest.Mock };
 
   const baseOrder = {
     id: 1,
@@ -52,6 +54,7 @@ describe('OrdersService', () => {
     usersService = {
       findOne: jest.fn(),
     };
+    pushNotifications = { notifyOrderStatusChanged: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,6 +74,10 @@ describe('OrdersService', () => {
         {
           provide: DataSource,
           useValue: { transaction: jest.fn() },
+        },
+        {
+          provide: PushNotificationsService,
+          useValue: pushNotifications,
         },
       ],
     }).compile();
@@ -99,6 +106,11 @@ describe('OrdersService', () => {
     expect(orderRepository.update).toHaveBeenCalledWith(
       { id: 1, status: 'pending' },
       { status: 'accepted' },
+    );
+    expect(pushNotifications.notifyOrderStatusChanged).toHaveBeenCalledWith(
+      acceptedOrder,
+      10,
+      'accepted',
     );
   });
 

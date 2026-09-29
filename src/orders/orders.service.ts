@@ -521,6 +521,16 @@ export class OrdersService {
       );
     }
 
-    return this.findOne(id);
+    const updatedOrder = await this.findOne(id);
+    const business = await this.businessesService.findOne(order.businessId);
+    const recipientUserId = currentUser?.id === order.userId
+      ? business.userId
+      : order.userId;
+    await this.pushNotifications?.notifyOrderStatusChanged(
+      updatedOrder,
+      recipientUserId,
+      data.status as Exclude<OrderStatus, 'pending'>,
+    );
+    return updatedOrder;
   }
 }

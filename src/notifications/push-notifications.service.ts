@@ -100,6 +100,29 @@ export class PushNotificationsService {
     });
   }
 
+  async notifyOrderStatusChanged(
+    order: Order,
+    recipientUserId: number,
+    status: 'accepted' | 'rejected' | 'cancelled' | 'ready' | 'completed',
+  ): Promise<void> {
+    const copy = {
+      accepted: ['Pedido aceptado', 'El negocio acepto tu pedido.'],
+      rejected: ['Pedido rechazado', 'El negocio rechazo tu pedido.'],
+      cancelled: ['Pedido cancelado', `${order.customerName || 'El cliente'} cancelo el pedido.`],
+      ready: ['Tu pedido esta listo', 'El negocio marco tu pedido como listo.'],
+      completed: ['Pedido completado', 'El pedido fue marcado como completado.'],
+    } as const;
+    const [title, body] = copy[status];
+    await this.sendToUser(recipientUserId, {
+      type: `order-${status}`,
+      title,
+      body,
+      tag: `order-${order.id}-${status}`,
+      orderId: order.id,
+      url: '/?open=requests-customer',
+    });
+  }
+
   async notifyQuoteResponded(quote: QuoteRequest): Promise<void> {
     await this.sendToUser(quote.userId, {
       type: 'quote-responded',
