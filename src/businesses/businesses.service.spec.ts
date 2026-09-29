@@ -31,6 +31,11 @@ describe('BusinessesService', () => {
   const existingBusiness = {
     id: 1,
     name: 'Tortas Eve',
+    description: 'Tortas personalizadas',
+    address: 'Coronel, Chile',
+    category: 'Pasteleria',
+    schedule: '{"lunes":{"enabled":true}}',
+    keywords: 'tortas, pasteleria',
     userId: 10,
     status: 'pending',
   } as Business;
@@ -357,5 +362,25 @@ describe('BusinessesService', () => {
     await expect(service.approve(1)).resolves.toMatchObject({
       status: 'approved',
     });
+  });
+
+  it('submitForReview() sends a complete owner profile to pending review', async () => {
+    businessRepository.findOne.mockResolvedValue({
+      ...existingBusiness,
+      type: 'Negocio',
+    });
+    businessRepository.save.mockImplementation(async (value) => value);
+
+    await expect(
+      service.submitForReview(1, { id: 10, role: 'user' }),
+    ).resolves.toMatchObject({ status: 'pending' });
+  });
+
+  it('submitForReview() rejects a request from a non-owner', async () => {
+    businessRepository.findOne.mockResolvedValue(existingBusiness);
+
+    await expect(
+      service.submitForReview(1, { id: 99, role: 'user' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

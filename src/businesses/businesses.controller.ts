@@ -210,6 +210,12 @@ export class BusinessesController {
     return this.businessesService.remove(id, req.user);
   }
 
+  @Patch(':id/submit-review')
+  @UseGuards(AuthGuard('jwt'))
+  submitForReview(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.businessesService.submitForReview(id, req.user);
+  }
+
   @Patch(':id/approve')
   @UseGuards(AuthGuard('jwt'))
   async approve(@Param('id', ParseIntPipe) id: number, @Request() req) {

@@ -125,6 +125,43 @@ export class BusinessesService {
     }
   }
 
+  private ensureReadyForReview(business: Business): void {
+    const requiredValues = [
+      business.name,
+      business.description,
+      business.address,
+      business.category,
+      business.schedule,
+      business.keywords,
+    ];
+
+    if (requiredValues.some((value) => !String(value ?? '').trim())) {
+      throw new BadRequestException(
+        'Completa todos los campos obligatorios antes de publicar',
+      );
+    }
+
+    if (
+      business.type === 'Servicio' &&
+      (business.offersOnSite === null ||
+        business.offersAtCustomerLocation === null)
+    ) {
+      throw new BadRequestException(
+        'El servicio debe confirmar sus dos modalidades de atencion',
+      );
+    }
+
+    if (
+      business.type === 'Servicio' &&
+      !business.offersOnSite &&
+      !business.offersAtCustomerLocation
+    ) {
+      throw new BadRequestException(
+        'El servicio debe ofrecer al menos una modalidad de atencion',
+      );
+    }
+  }
+
   async create(data: Partial<Business>): Promise<Business> {
     await this.ensureCategoryExists(data.categoryId);
 
@@ -195,28 +232,21 @@ export class BusinessesService {
     await this.businessRepository.delete(id);
   }
 
+  async submitForReview(
+    id: number,
+    currentUser?: CurrentUser,
+  ): Promise<Business> {
+    const business = await this.findOne(id);
+    this.ensureCanManageBusiness(business, currentUser);
+    this.ensureReadyForReview(business);
+
+    business.status = 'pending';
+    return this.businessRepository.save(business);
+  }
+
   async approve(id: number): Promise<Business> {
     const business = await this.findOne(id);
-
-    if (
-      business.type === 'Servicio' &&
-      (business.offersOnSite === null ||
-        business.offersAtCustomerLocation === null)
-    ) {
-      throw new BadRequestException(
-        'El servicio debe confirmar sus dos modalidades de atencion',
-      );
-    }
-
-    if (
-      business.type === 'Servicio' &&
-      !business.offersOnSite &&
-      !business.offersAtCustomerLocation
-    ) {
-      throw new BadRequestException(
-        'El servicio debe ofrecer al menos una modalidad de atencion',
-      );
-    }
+    this.ensureReadyForReview(business);
 
     business.status = 'approved';
 
