@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as webPush from 'web-push';
 import { Order } from '../orders/order.entity';
+import { QuoteRequest, QuoteStatus } from '../quotes/quote-request.entity';
 import { SavePushSubscriptionDto } from './dto/save-push-subscription.dto';
 import { PushSubscription } from './push-subscription.entity';
 
@@ -62,23 +63,85 @@ export class PushNotificationsService {
   }
 
   async notifyNewOrder(order: Order, ownerUserId: number): Promise<void> {
+    await this.sendToUser(ownerUserId, {
+      type: 'new-order',
+      title: 'Nuevo pedido recibido',
+      body: `${order.customerName || 'Un cliente'} envio un pedido por $${Number(order.total).toLocaleString('es-CL')}`,
+      tag: `order-${order.id}-created`,
+      orderId: order.id,
+      customerName: order.customerName,
+      url: '/?open=requests-business',
+    });
+  }
+
+  async notifyNewQuote(
+    quote: QuoteRequest,
+    ownerUserId: number,
+  ): Promise<void> {
+    await this.sendToUser(ownerUserId, {
+      type: 'new-quote',
+      title: 'Nueva cotizacion recibida',
+      body: `${quote.customerName || 'Un cliente'} solicito una cotizacion por ${quote.itemNameSnapshot}`,
+      tag: `quote-${quote.id}-created`,
+      quoteId: quote.id,
+      customerName: quote.customerName,
+      url: '/?open=requests-business-quotes',
+    });
+  }
+
+  async notifyQuoteResponded(quote: QuoteRequest): Promise<void> {
+    await this.sendToUser(quote.userId, {
+      type: 'quote-responded',
+      title: 'Respondieron tu cotizacion',
+      body: `Recibiste un precio para ${quote.itemNameSnapshot}`,
+      tag: `quote-${quote.id}-responded`,
+      quoteId: quote.id,
+      url: '/?open=requests-customer-quotes',
+    });
+  }
+
+  async notifyQuoteStatusChanged(
+    quote: QuoteRequest,
+    ownerUserId: number,
+    status: Extract<QuoteStatus, 'accepted' | 'declined' | 'cancelled'>,
+  ): Promise<void> {
+    const copy = {
+      accepted: [
+        'Cotizacion aceptada',
+        `El cliente acepto tu cotizacion por ${quote.itemNameSnapshot}`,
+      ],
+      declined: [
+        'Cotizacion rechazada',
+        `El cliente rechazo tu cotizacion por ${quote.itemNameSnapshot}`,
+      ],
+      cancelled: [
+        'Cotizacion cancelada',
+        `El cliente cancelo su solicitud por ${quote.itemNameSnapshot}`,
+      ],
+    } as const;
+    const [title, body] = copy[status];
+    await this.sendToUser(ownerUserId, {
+      type: `quote-${status}`,
+      title,
+      body,
+      tag: `quote-${quote.id}-${status}`,
+      quoteId: quote.id,
+      url: '/?open=requests-business-quotes',
+    });
+  }
+
+  private async sendToUser(
+    userId: number,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
     if (!this.enabled) return;
 
     try {
       const targets = await this.subscriptions.find({
-        where: { userId: ownerUserId },
+        where: { userId },
       });
       if (targets.length === 0) return;
-
-      const payload = JSON.stringify({
-        type: 'new-order',
-        title: 'Nuevo pedido recibido',
-        body: `${order.customerName || 'Un cliente'} envio un pedido por $${Number(order.total).toLocaleString('es-CL')}`,
-        tag: `order-${order.id}-created`,
-        orderId: order.id,
-        customerName: order.customerName,
-        url: '/?open=requests-business',
-      });
+      const serializedPayload = JSON.stringify(payload);
 
       await Promise.all(
         targets.map(async (target) => {
@@ -88,7 +151,7 @@ export class PushNotificationsService {
                 endpoint: target.endpoint,
                 keys: { p256dh: target.p256dh, auth: target.auth },
               },
-              payload,
+              serializedPayload,
             );
           } catch (error) {
             const statusCode = (error as WebPushError).statusCode;
@@ -97,14 +160,14 @@ export class PushNotificationsService {
               return;
             }
             this.logger.error(
-              `No se pudo enviar la notificacion del pedido ${order.id}`,
+              `No se pudo enviar la notificacion ${String(payload.tag ?? '')}`,
             );
           }
         }),
       );
     } catch {
       this.logger.error(
-        `No se pudieron procesar las notificaciones del pedido ${order.id}`,
+        `No se pudieron procesar las notificaciones ${String(payload.tag ?? '')}`,
       );
     }
   }

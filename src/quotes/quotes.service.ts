@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +18,7 @@ import { UsersService } from '../users/users.service';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { RespondQuoteDto } from './dto/respond-quote.dto';
 import { QuoteRequest } from './quote-request.entity';
+import { PushNotificationsService } from '../notifications/push-notifications.service';
 
 type CurrentUser = { id?: number; role?: string };
 
@@ -27,6 +29,8 @@ export class QuotesService {
     private readonly quoteRepository: Repository<QuoteRequest>,
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
+    @Optional()
+    private readonly pushNotifications?: PushNotificationsService,
   ) {}
 
   async create(data: CreateQuoteDto, userId?: number) {
@@ -43,13 +47,15 @@ export class QuotesService {
     if (!data.needNow && (!data.requestedDate || !data.requestedTime))
       throw new BadRequestException('Selecciona una fecha y hora');
 
+    let ownerUserId = 0;
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const quote = await this.dataSource.transaction(async (manager) => {
         const business = await manager.findOne(Business, {
           where: { id: data.businessId, status: 'approved' },
           select: { id: true, userId: true },
         });
         if (!business) throw new NotFoundException('Negocio no encontrado');
+        ownerUserId = business.userId;
         if (business.userId === userId)
           throw new ForbiddenException(
             'No puedes cotizar en tu propio negocio',
@@ -88,6 +94,8 @@ export class QuotesService {
           }),
         );
       });
+      await this.pushNotifications?.notifyNewQuote(quote, ownerUserId);
+      return quote;
     } catch (error: any) {
       if (error?.code === '23505') {
         const duplicate = await this.quoteRepository.findOne({
@@ -131,7 +139,9 @@ export class QuotesService {
       throw new ConflictException(
         'La solicitud cambio. Actualiza e intenta nuevamente',
       );
-    return this.findOne(id);
+    const updatedQuote = await this.findOne(id);
+    await this.pushNotifications?.notifyQuoteResponded(updatedQuote);
+    return updatedQuote;
   }
 
   async updateCustomerStatus(
@@ -156,7 +166,14 @@ export class QuotesService {
       throw new ConflictException(
         'La cotizacion cambio. Actualiza e intenta nuevamente',
       );
-    return this.findOne(id);
+    const updatedQuote = await this.findOne(id);
+    const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
+    await this.pushNotifications?.notifyQuoteStatusChanged(
+      updatedQuote,
+      ownerUserId,
+      status,
+    );
+    return updatedQuote;
   }
 
   private async findOne(id: number) {
@@ -169,16 +186,23 @@ export class QuotesService {
     businessId: number,
     currentUser: CurrentUser,
   ) {
-    const business = await this.dataSource
-      .getRepository(Business)
-      .findOne({
-        where: { id: businessId },
-        select: { id: true, userId: true },
-      });
+    const business = await this.dataSource.getRepository(Business).findOne({
+      where: { id: businessId },
+      select: { id: true, userId: true },
+    });
     if (!business) throw new NotFoundException('Negocio no encontrado');
     if (business.userId !== currentUser.id && currentUser.role !== 'admin')
       throw new ForbiddenException(
         'No tienes permiso para ver estas cotizaciones',
       );
+  }
+
+  private async findBusinessOwnerUserId(businessId: number): Promise<number> {
+    const business = await this.dataSource.getRepository(Business).findOne({
+      where: { id: businessId },
+      select: { id: true, userId: true },
+    });
+    if (!business) throw new NotFoundException('Negocio no encontrado');
+    return business.userId;
   }
 }

@@ -12,6 +12,7 @@ import {
   CatalogItemPricingMode,
 } from '../catalog/catalog-item.entity';
 import { UsersService } from '../users/users.service';
+import { PushNotificationsService } from '../notifications/push-notifications.service';
 import { QuoteRequest } from './quote-request.entity';
 import { QuotesService } from './quotes.service';
 
@@ -45,6 +46,11 @@ describe('QuotesService security and consistency', () => {
   let savedRepository: { create: jest.Mock; save: jest.Mock };
   let businessRepository: { findOne: jest.Mock };
   let dataSource: { transaction: jest.Mock; getRepository: jest.Mock };
+  let pushNotifications: {
+    notifyNewQuote: jest.Mock;
+    notifyQuoteResponded: jest.Mock;
+    notifyQuoteStatusChanged: jest.Mock;
+  };
 
   beforeEach(async () => {
     quoteRepository = {
@@ -69,6 +75,11 @@ describe('QuotesService security and consistency', () => {
       transaction: jest.fn(async (callback) => callback(manager)),
       getRepository: jest.fn().mockReturnValue(businessRepository),
     };
+    pushNotifications = {
+      notifyNewQuote: jest.fn(),
+      notifyQuoteResponded: jest.fn(),
+      notifyQuoteStatusChanged: jest.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -79,6 +90,7 @@ describe('QuotesService security and consistency', () => {
         },
         { provide: UsersService, useValue: { findOne: jest.fn(() => user) } },
         { provide: DataSource, useValue: dataSource },
+        { provide: PushNotificationsService, useValue: pushNotifications },
       ],
     }).compile();
     service = module.get(QuotesService);
@@ -90,6 +102,16 @@ describe('QuotesService security and consistency', () => {
 
     await expect(service.create(dto, 10)).resolves.toBe(existing);
     expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(pushNotifications.notifyNewQuote).not.toHaveBeenCalled();
+  });
+
+  it('notifies the owner after creating a new quote', async () => {
+    await service.create(dto, 10);
+
+    expect(pushNotifications.notifyNewQuote).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 40, status: 'requested' }),
+      30,
+    );
   });
 
   it('blocks quoting the authenticated owners own business', async () => {
@@ -153,6 +175,49 @@ describe('QuotesService security and consistency', () => {
     await expect(
       service.respond(40, { priceClp: 15000 }, { id: 30, role: 'user' }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('notifies the customer after the owner responds', async () => {
+    const requested = {
+      id: 40,
+      businessId: 20,
+      userId: 10,
+      status: 'requested',
+    };
+    const quoted = { ...requested, status: 'quoted' };
+    quoteRepository.findOne
+      .mockResolvedValueOnce(requested)
+      .mockResolvedValueOnce(quoted);
+    quoteRepository.update.mockResolvedValue({ affected: 1 });
+
+    await service.respond(40, { priceClp: 15000 }, { id: 30, role: 'user' });
+
+    expect(pushNotifications.notifyQuoteResponded).toHaveBeenCalledWith(quoted);
+  });
+
+  it('notifies the owner when the customer accepts a quote', async () => {
+    const quoted = {
+      id: 40,
+      businessId: 20,
+      userId: 10,
+      status: 'quoted',
+    };
+    const accepted = { ...quoted, status: 'accepted' };
+    quoteRepository.findOne
+      .mockResolvedValueOnce(quoted)
+      .mockResolvedValueOnce(accepted);
+    quoteRepository.update.mockResolvedValue({ affected: 1 });
+
+    await service.updateCustomerStatus(40, 'accepted', {
+      id: 10,
+      role: 'user',
+    });
+
+    expect(pushNotifications.notifyQuoteStatusChanged).toHaveBeenCalledWith(
+      accepted,
+      30,
+      'accepted',
+    );
   });
 
   it('rejects accepting a request before the owner has quoted it', async () => {

@@ -1,6 +1,7 @@
 import { Repository } from 'typeorm';
 import * as webPush from 'web-push';
 import { Order } from '../orders/order.entity';
+import { QuoteRequest } from '../quotes/quote-request.entity';
 import { PushSubscription } from './push-subscription.entity';
 import { PushNotificationsService } from './push-notifications.service';
 
@@ -99,12 +100,39 @@ describe('PushNotificationsService', () => {
         auth: 'device-auth',
       },
     ]);
-    jest.mocked(webPush.sendNotification).mockRejectedValue({ statusCode: 410 });
+    jest
+      .mocked(webPush.sendNotification)
+      .mockRejectedValue({ statusCode: 410 });
     const service = createService();
     await service.notifyNewOrder(
       { id: 15, customerName: null, total: 12000 } as Order,
       27,
     );
     expect(repository.delete).toHaveBeenCalledWith({ id: 3 });
+  });
+
+  it('sends a quote response only to the requesting customer', async () => {
+    repository.find.mockResolvedValue([
+      {
+        id: 4,
+        endpoint: 'https://push.example/customer',
+        p256dh: 'public-device-key',
+        auth: 'device-auth',
+      },
+    ]);
+    jest.mocked(webPush.sendNotification).mockResolvedValue({} as never);
+    const service = createService();
+
+    await service.notifyQuoteResponded({
+      id: 18,
+      userId: 44,
+      itemNameSnapshot: 'Reparacion',
+    } as QuoteRequest);
+
+    expect(repository.find).toHaveBeenCalledWith({ where: { userId: 44 } });
+    expect(webPush.sendNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: 'https://push.example/customer' }),
+      expect.stringContaining('"type":"quote-responded"'),
+    );
   });
 });
