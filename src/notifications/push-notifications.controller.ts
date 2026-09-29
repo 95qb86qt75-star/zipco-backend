@@ -12,6 +12,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { RemovePushSubscriptionDto } from './dto/remove-push-subscription.dto';
 import { SavePushSubscriptionDto } from './dto/save-push-subscription.dto';
+import { UpdatePushPresenceDto } from './dto/update-push-presence.dto';
 import { PushNotificationsService } from './push-notifications.service';
 
 @Controller('push')
@@ -28,6 +29,13 @@ export class PushNotificationsController {
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   save(@Body() data: SavePushSubscriptionDto, @Request() req) {
     return this.notifications.save(req.user.id, data);
+  }
+
+  @Post('presence')
+  @UseGuards(AuthGuard('jwt'))
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  updatePresence(@Body() data: UpdatePushPresenceDto, @Request() req) {
+    return this.notifications.updatePresence(req.user.id, data);
   }
 
   @Delete('subscriptions')

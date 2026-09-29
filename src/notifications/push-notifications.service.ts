@@ -9,6 +9,7 @@ import * as webPush from 'web-push';
 import { Order } from '../orders/order.entity';
 import { QuoteRequest, QuoteStatus } from '../quotes/quote-request.entity';
 import { SavePushSubscriptionDto } from './dto/save-push-subscription.dto';
+import { UpdatePushPresenceDto } from './dto/update-push-presence.dto';
 import { PushSubscription } from './push-subscription.entity';
 
 type WebPushError = Error & { statusCode?: number };
@@ -60,6 +61,14 @@ export class PushNotificationsService {
   async remove(userId: number, endpoint: string) {
     await this.subscriptions.delete({ userId, endpoint });
     return { subscribed: false };
+  }
+
+  async updatePresence(userId: number, data: UpdatePushPresenceDto) {
+    await this.subscriptions.update(
+      { userId, endpoint: data.endpoint },
+      { isForeground: data.isForeground, lastSeenAt: new Date() },
+    );
+    return { updated: true };
   }
 
   async notifyNewOrder(order: Order, ownerUserId: number): Promise<void> {
@@ -140,11 +149,18 @@ export class PushNotificationsService {
       const targets = await this.subscriptions.find({
         where: { userId },
       });
-      if (targets.length === 0) return;
+      const foregroundThreshold = Date.now() - 45_000;
+      const eligibleTargets = targets.filter(
+        (target) =>
+          !target.isForeground ||
+          !target.lastSeenAt ||
+          target.lastSeenAt.getTime() < foregroundThreshold,
+      );
+      if (eligibleTargets.length === 0) return;
       const serializedPayload = JSON.stringify(payload);
 
       await Promise.all(
-        targets.map(async (target) => {
+        eligibleTargets.map(async (target) => {
           try {
             await webPush.sendNotification(
               {

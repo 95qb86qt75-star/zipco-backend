@@ -25,6 +25,12 @@ export class PushSubscription {
   @Column({ type: 'varchar', length: 512 })
   auth: string;
 
+  @Column({ type: 'boolean', default: false })
+  isForeground: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lastSeenAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -18,6 +18,7 @@ describe('PushNotificationsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     delete: jest.Mock;
+    update: jest.Mock;
   };
 
   beforeEach(() => {
@@ -34,6 +35,7 @@ describe('PushNotificationsService', () => {
       create: jest.fn((value) => value),
       save: jest.fn(async (value) => value),
       delete: jest.fn(),
+      update: jest.fn(),
     };
   });
 
@@ -134,5 +136,58 @@ describe('PushNotificationsService', () => {
       expect.objectContaining({ endpoint: 'https://push.example/customer' }),
       expect.stringContaining('"type":"quote-responded"'),
     );
+  });
+
+  it('records whether a subscribed app is visible', async () => {
+    const service = createService();
+    await service.updatePresence(9, {
+      endpoint: 'https://push.example/subscription',
+      isForeground: true,
+    });
+    expect(repository.update).toHaveBeenCalledWith(
+      { userId: 9, endpoint: 'https://push.example/subscription' },
+      { isForeground: true, lastSeenAt: expect.any(Date) },
+    );
+  });
+
+  it('does not send Web Push to an app recently reported in foreground', async () => {
+    repository.find.mockResolvedValue([
+      {
+        id: 5,
+        endpoint: 'https://push.example/visible',
+        p256dh: 'public-device-key',
+        auth: 'device-auth',
+        isForeground: true,
+        lastSeenAt: new Date(),
+      },
+    ]);
+    const service = createService();
+    await service.notifyQuoteResponded({
+      id: 19,
+      userId: 44,
+      itemNameSnapshot: 'Reparacion',
+    } as QuoteRequest);
+    expect(webPush.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('recovers Web Push if a foreground heartbeat becomes stale', async () => {
+    repository.find.mockResolvedValue([
+      {
+        id: 6,
+        endpoint: 'https://push.example/stale',
+        p256dh: 'public-device-key',
+        auth: 'device-auth',
+        isForeground: true,
+        lastSeenAt: new Date(Date.now() - 60_000),
+      },
+    ]);
+    jest.mocked(webPush.sendNotification).mockResolvedValue({} as never);
+    const service = createService();
+    await service.notifyQuoteResponded({
+      id: 20,
+      userId: 44,
+      itemNameSnapshot: 'Reparacion',
+    } as QuoteRequest);
+    expect(webPush.sendNotification).toHaveBeenCalled();
   });
 });
