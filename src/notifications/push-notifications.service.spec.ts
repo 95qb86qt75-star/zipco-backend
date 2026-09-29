@@ -170,6 +170,38 @@ describe('PushNotificationsService', () => {
     expect(webPush.sendNotification).not.toHaveBeenCalled();
   });
 
+  it('retries a skipped Push after the app moves to background', async () => {
+    jest.useFakeTimers();
+    const visibleTarget = {
+      id: 7,
+      userId: 44,
+      endpoint: 'https://push.example/locked',
+      p256dh: 'public-device-key',
+      auth: 'device-auth',
+      isForeground: true,
+      lastSeenAt: new Date(),
+    };
+    repository.find.mockResolvedValue([visibleTarget]);
+    repository.findOne.mockResolvedValue({
+      ...visibleTarget,
+      isForeground: false,
+      lastSeenAt: new Date(),
+    });
+    jest.mocked(webPush.sendNotification).mockResolvedValue({} as never);
+    const service = createService();
+
+    await service.notifyQuoteResponded({
+      id: 21,
+      userId: 44,
+      itemNameSnapshot: 'Reparacion',
+    } as QuoteRequest);
+    expect(webPush.sendNotification).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(13_000);
+    expect(webPush.sendNotification).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
   it('recovers Web Push if a foreground heartbeat becomes stale', async () => {
     repository.find.mockResolvedValue([
       {

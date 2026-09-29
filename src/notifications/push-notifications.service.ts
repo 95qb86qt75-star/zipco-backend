@@ -13,6 +13,8 @@ import { UpdatePushPresenceDto } from './dto/update-push-presence.dto';
 import { PushSubscription } from './push-subscription.entity';
 
 type WebPushError = Error & { statusCode?: number };
+const FOREGROUND_STALE_MS = 12_000;
+const FOREGROUND_RETRY_MS = 13_000;
 
 @Injectable()
 export class PushNotificationsService {
@@ -149,42 +151,73 @@ export class PushNotificationsService {
       const targets = await this.subscriptions.find({
         where: { userId },
       });
-      const foregroundThreshold = Date.now() - 45_000;
-      const eligibleTargets = targets.filter(
-        (target) =>
-          !target.isForeground ||
-          !target.lastSeenAt ||
-          target.lastSeenAt.getTime() < foregroundThreshold,
+      const eligibleTargets = targets.filter((target) =>
+        this.canReceiveSystemPush(target),
       );
-      if (eligibleTargets.length === 0) return;
-      const serializedPayload = JSON.stringify(payload);
-
-      await Promise.all(
-        eligibleTargets.map(async (target) => {
-          try {
-            await webPush.sendNotification(
-              {
-                endpoint: target.endpoint,
-                keys: { p256dh: target.p256dh, auth: target.auth },
-              },
-              serializedPayload,
-            );
-          } catch (error) {
-            const statusCode = (error as WebPushError).statusCode;
-            if (statusCode === 404 || statusCode === 410) {
-              await this.subscriptions.delete({ id: target.id });
-              return;
-            }
-            this.logger.error(
-              `No se pudo enviar la notificacion ${String(payload.tag ?? '')}`,
-            );
-          }
-        }),
+      const deferredTargets = targets.filter(
+        (target) => !this.canReceiveSystemPush(target),
       );
+      await this.sendToTargets(eligibleTargets, payload);
+      deferredTargets.forEach((target) => {
+        const timeout = setTimeout(() => {
+          void this.retryDeferredTarget(userId, target.endpoint, payload);
+        }, FOREGROUND_RETRY_MS);
+        timeout.unref?.();
+      });
     } catch {
       this.logger.error(
         `No se pudieron procesar las notificaciones ${String(payload.tag ?? '')}`,
       );
     }
+  }
+
+  private canReceiveSystemPush(target: PushSubscription): boolean {
+    return (
+      !target.isForeground ||
+      !target.lastSeenAt ||
+      target.lastSeenAt.getTime() < Date.now() - FOREGROUND_STALE_MS
+    );
+  }
+
+  private async retryDeferredTarget(
+    userId: number,
+    endpoint: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const target = await this.subscriptions.findOne({
+      where: { userId, endpoint },
+    });
+    if (!target || !this.canReceiveSystemPush(target)) return;
+    await this.sendToTargets([target], payload);
+  }
+
+  private async sendToTargets(
+    targets: PushSubscription[],
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (targets.length === 0) return;
+    const serializedPayload = JSON.stringify(payload);
+    await Promise.all(
+      targets.map(async (target) => {
+        try {
+          await webPush.sendNotification(
+            {
+              endpoint: target.endpoint,
+              keys: { p256dh: target.p256dh, auth: target.auth },
+            },
+            serializedPayload,
+          );
+        } catch (error) {
+          const statusCode = (error as WebPushError).statusCode;
+          if (statusCode === 404 || statusCode === 410) {
+            await this.subscriptions.delete({ id: target.id });
+            return;
+          }
+          this.logger.error(
+            `No se pudo enviar la notificacion ${String(payload.tag ?? '')}`,
+          );
+        }
+      }),
+    );
   }
 }
