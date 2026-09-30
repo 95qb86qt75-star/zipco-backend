@@ -57,6 +57,12 @@ export class QuoteRequest {
   @Column({ type: 'varchar', length: 1000, nullable: true }) businessMessage:
     | string
     | null;
+  @Column({ type: 'timestamptz', nullable: true }) customerArchivedAt:
+    | Date
+    | null;
+  @Column({ type: 'timestamptz', nullable: true }) businessArchivedAt:
+    | Date
+    | null;
   @Column({ type: 'uuid' }) idempotencyKey: string;
   @CreateDateColumn() createdAt: Date;
   @UpdateDateColumn() updatedAt: Date;

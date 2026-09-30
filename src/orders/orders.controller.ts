@@ -18,6 +18,7 @@ import { Order } from './order.entity';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { ArchiveRequestDto } from '../common/dto/archive-request.dto';
 
 @Controller('orders')
 export class OrdersController {
@@ -80,5 +81,15 @@ export class OrdersController {
       { status, cancellationReason },
       req.user,
     );
+  }
+
+  @Patch(':id/archive')
+  @UseGuards(AuthGuard('jwt'))
+  archive(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: ArchiveRequestDto,
+    @Request() req,
+  ) {
+    return this.ordersService.setArchived(id, data.archived, req.user);
   }
 }

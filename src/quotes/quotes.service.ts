@@ -176,6 +176,22 @@ export class QuotesService {
     return updatedQuote;
   }
 
+  async setArchived(id: number, archived: boolean, currentUser: CurrentUser) {
+    const quote = await this.findOne(id);
+    if (!['declined', 'cancelled'].includes(quote.status)) {
+      throw new BadRequestException('Solo puedes archivar cotizaciones finalizadas');
+    }
+    const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
+    const isCustomer = quote.userId === currentUser.id;
+    const isBusiness = ownerUserId === currentUser.id;
+    if (!isCustomer && !isBusiness && currentUser.role !== 'admin') {
+      throw new ForbiddenException('No tienes permiso para archivar esta cotizacion');
+    }
+    const field = isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
+    await this.quoteRepository.update(id, { [field]: archived ? new Date() : null });
+    return this.findOne(id);
+  }
+
   private async findOne(id: number) {
     const quote = await this.quoteRepository.findOne({ where: { id } });
     if (!quote) throw new NotFoundException('Cotizacion no encontrada');

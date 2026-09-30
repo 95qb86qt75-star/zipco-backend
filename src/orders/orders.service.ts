@@ -537,4 +537,20 @@ export class OrdersService {
     );
     return updatedOrder;
   }
+
+  async setArchived(id: number, archived: boolean, currentUser?: CurrentUser) {
+    const order = await this.findOne(id);
+    if (!['completed', 'rejected', 'cancelled'].includes(order.status)) {
+      throw new BadRequestException('Solo puedes archivar pedidos finalizados');
+    }
+    const business = await this.businessesService.findOne(order.businessId);
+    const isCustomer = currentUser?.id === order.userId;
+    const isBusiness = currentUser?.id === business.userId;
+    if (!isCustomer && !isBusiness && currentUser?.role !== 'admin') {
+      throw new ForbiddenException('No tienes permiso para archivar este pedido');
+    }
+    const field = isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
+    await this.orderRepository.update(id, { [field]: archived ? new Date() : null });
+    return this.findOne(id);
+  }
 }

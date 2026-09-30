@@ -16,6 +16,7 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { RespondQuoteDto } from './dto/respond-quote.dto';
 import { UpdateQuoteStatusDto } from './dto/update-quote-status.dto';
 import { QuotesService } from './quotes.service';
+import { ArchiveRequestDto } from '../common/dto/archive-request.dto';
 
 @Controller('quotes')
 @UseGuards(AuthGuard('jwt'))
@@ -53,5 +54,12 @@ export class QuotesController {
     @Request() req,
   ) {
     return this.quotesService.updateCustomerStatus(id, data.status, req.user);
+  }
+  @Patch(':id/archive') archive(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: ArchiveRequestDto,
+    @Request() req,
+  ) {
+    return this.quotesService.setArchived(id, data.archived, req.user);
   }
 }

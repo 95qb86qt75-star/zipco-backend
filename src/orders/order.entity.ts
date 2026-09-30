@@ -54,6 +54,12 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   cancellationReason: string | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  customerArchivedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  businessArchivedAt: Date | null;
+
   @OneToMany(() => OrderItem, (item) => item.order)
   items: OrderItem[];
 
