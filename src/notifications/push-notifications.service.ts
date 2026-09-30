@@ -81,7 +81,7 @@ export class PushNotificationsService {
       tag: `order-${order.id}-created`,
       orderId: order.id,
       customerName: order.customerName,
-      url: '/?open=requests-business',
+      url: `/?open=requests-business&orderId=${order.id}`,
     });
   }
 
@@ -96,7 +96,7 @@ export class PushNotificationsService {
       tag: `quote-${quote.id}-created`,
       quoteId: quote.id,
       customerName: quote.customerName,
-      url: '/?open=requests-business-quotes',
+      url: `/?open=requests-business-quotes&quoteId=${quote.id}`,
     });
   }
 
@@ -104,6 +104,7 @@ export class PushNotificationsService {
     order: Order,
     recipientUserId: number,
     status: 'accepted' | 'rejected' | 'cancelled' | 'ready' | 'completed',
+    recipientView: 'customer' | 'business',
   ): Promise<void> {
     const copy = {
       accepted: ['Pedido aceptado', 'El negocio acepto tu pedido.'],
@@ -119,7 +120,7 @@ export class PushNotificationsService {
       body,
       tag: `order-${order.id}-${status}`,
       orderId: order.id,
-      url: '/?open=requests-customer',
+      url: `/?open=requests-${recipientView}&orderId=${order.id}`,
     });
   }
 
@@ -130,7 +131,7 @@ export class PushNotificationsService {
       body: `Recibiste un precio para ${quote.itemNameSnapshot}`,
       tag: `quote-${quote.id}-responded`,
       quoteId: quote.id,
-      url: '/?open=requests-customer-quotes',
+      url: `/?open=requests-customer-quotes&quoteId=${quote.id}`,
     });
   }
 
@@ -160,7 +161,7 @@ export class PushNotificationsService {
       body,
       tag: `quote-${quote.id}-${status}`,
       quoteId: quote.id,
-      url: '/?open=requests-business-quotes',
+      url: `/?open=requests-business-quotes&quoteId=${quote.id}`,
     });
   }
 

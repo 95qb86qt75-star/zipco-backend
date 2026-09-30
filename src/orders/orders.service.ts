@@ -526,10 +526,14 @@ export class OrdersService {
     const recipientUserId = currentUser?.id === order.userId
       ? business.userId
       : order.userId;
+    const recipientView = currentUser?.id === order.userId
+      ? 'business'
+      : 'customer';
     await this.pushNotifications?.notifyOrderStatusChanged(
       updatedOrder,
       recipientUserId,
       data.status as Exclude<OrderStatus, 'pending'>,
+      recipientView,
     );
     return updatedOrder;
   }

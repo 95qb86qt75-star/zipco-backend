@@ -111,6 +111,7 @@ describe('OrdersService', () => {
       acceptedOrder,
       10,
       'accepted',
+      'customer',
     );
   });
 
