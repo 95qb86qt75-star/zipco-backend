@@ -256,4 +256,19 @@ describe('QuotesService security and consistency', () => {
     quoteRepository.findOne.mockResolvedValueOnce(ready).mockResolvedValueOnce(completed);
     await expect(service.updateStatus(40, { status: 'completed' }, { id: 10, role: 'user' })).resolves.toEqual(completed);
   });
+
+  it('requires a reason when the business rejects a new quote request', async () => {
+    quoteRepository.findOne.mockResolvedValue({ id: 40, businessId: 20, userId: 10, status: 'requested' });
+    await expect(service.updateStatus(40, { status: 'declined' }, { id: 30, role: 'user' })).rejects.toBeInstanceOf(BadRequestException);
+    expect(quoteRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('allows the business to reject a new quote request with a valid reason', async () => {
+    const requested = { id: 40, businessId: 20, userId: 10, status: 'requested' };
+    const declined = { ...requested, status: 'declined', closureReason: 'unavailable' };
+    quoteRepository.findOne.mockResolvedValueOnce(requested).mockResolvedValueOnce(declined);
+    quoteRepository.update.mockResolvedValue({ affected: 1 });
+    await expect(service.updateStatus(40, { status: 'declined', reason: 'unavailable' }, { id: 30, role: 'user' })).resolves.toEqual(declined);
+    expect(pushNotifications.notifyQuoteStatusChanged).toHaveBeenCalledWith(declined, 10, 'declined', 'customer');
+  });
 });

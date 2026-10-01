@@ -182,11 +182,15 @@ export class QuotesService {
     const allowed =
       (isCustomer || isAdmin) && ['quoted', 'alternative_proposed'].includes(quote.status) && ['accepted', 'declined'].includes(data.status)
       || (isCustomer || isAdmin) && ['requested', 'quoted'].includes(quote.status) && data.status === 'cancelled'
+      || (isBusiness || isAdmin) && quote.status === 'requested' && data.status === 'declined'
       || (isBusiness || isAdmin) && quote.status === 'accepted' && data.status === 'ready'
       || (isCustomer || isAdmin) && quote.status === 'ready' && data.status === 'completed';
     if (!allowed) throw new BadRequestException('Transicion de cotizacion no valida');
     if (data.status === 'cancelled' && !data.reason) {
       throw new BadRequestException('Debes indicar un motivo de cancelacion');
+    }
+    if (isBusiness && quote.status === 'requested' && data.status === 'declined' && !data.reason) {
+      throw new BadRequestException('Debes indicar un motivo de rechazo');
     }
     if (data.reason === 'other' && !data.reasonDetail?.trim()) {
       throw new BadRequestException('Debes escribir el otro motivo');
