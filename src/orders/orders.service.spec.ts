@@ -125,13 +125,13 @@ describe('OrdersService', () => {
     businessesService.findOne.mockResolvedValue(business);
 
     await expect(
-      service.updateStatus(1, { status: 'rejected' }, { id: 30, role: 'user' }),
+      service.updateStatus(1, { status: 'rejected', rejectionReason: 'unavailable' }, { id: 30, role: 'user' }),
     ).resolves.toEqual(rejectedOrder);
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.update).toHaveBeenCalledWith(
       { id: 1, status: 'pending' },
-      { status: 'rejected' },
+      { status: 'rejected', cancellationReason: 'unavailable', cancellationReasonDetail: null },
     );
   });
 
@@ -147,13 +147,13 @@ describe('OrdersService', () => {
       businessesService.findOne.mockResolvedValue(business);
 
       await expect(
-        service.updateStatus(1, { status }, { id: 99, role: 'admin' }),
+        service.updateStatus(1, status === 'rejected' ? { status, rejectionReason: 'unavailable' } : { status }, { id: 99, role: 'admin' }),
       ).resolves.toEqual(updatedOrder);
 
       expect(businessesService.findOne).toHaveBeenCalledWith(20);
       expect(orderRepository.update).toHaveBeenCalledWith(
         { id: 1, status: 'pending' },
-        { status },
+        status === 'rejected' ? { status, cancellationReason: 'unavailable', cancellationReasonDetail: null } : { status },
       );
     },
   );
@@ -197,7 +197,7 @@ describe('OrdersService', () => {
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.find).toHaveBeenCalledWith({
-      where: { businessId: 20 },
+      where: expect.objectContaining({ businessId: 20 }),
       relations: { items: true },
       order: { createdAt: 'DESC' },
     });
@@ -215,7 +215,7 @@ describe('OrdersService', () => {
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.find).toHaveBeenCalledWith({
-      where: { businessId: 20 },
+      where: expect.objectContaining({ businessId: 20 }),
       relations: { items: true },
       order: { createdAt: 'DESC' },
     });

@@ -17,6 +17,7 @@ import { RespondQuoteDto } from './dto/respond-quote.dto';
 import { UpdateQuoteStatusDto } from './dto/update-quote-status.dto';
 import { QuotesService } from './quotes.service';
 import { ArchiveRequestDto } from '../common/dto/archive-request.dto';
+import { ProposeQuoteAlternativeDto } from './dto/propose-quote-alternative.dto';
 
 @Controller('quotes')
 @UseGuards(AuthGuard('jwt'))
@@ -53,7 +54,14 @@ export class QuotesController {
     @Body() data: UpdateQuoteStatusDto,
     @Request() req,
   ) {
-    return this.quotesService.updateCustomerStatus(id, data.status, req.user);
+    return this.quotesService.updateStatus(id, data, req.user);
+  }
+  @Patch(':id/alternative') proposeAlternative(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: ProposeQuoteAlternativeDto,
+    @Request() req,
+  ) {
+    return this.quotesService.proposeAlternative(id, data, req.user);
   }
   @Patch(':id/archive') archive(
     @Param('id', ParseIntPipe) id: number,
@@ -61,5 +69,11 @@ export class QuotesController {
     @Request() req,
   ) {
     return this.quotesService.setArchived(id, data.archived, req.user);
+  }
+  @Patch(':id/delete-permanently') deletePermanently(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
+    return this.quotesService.setPermanentlyDeleted(id, req.user);
   }
 }

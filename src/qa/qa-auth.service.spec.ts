@@ -56,7 +56,7 @@ describe('QaAuthService', () => {
       businessId: 7,
     });
     expect(jwt.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 2 }), {
-      expiresIn: '1h',
+      expiresIn: '8h',
     });
   });
 });

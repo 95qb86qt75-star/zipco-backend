@@ -11,7 +11,7 @@ import { BusinessesService } from '../businesses/businesses.service';
 import { UsersService } from '../users/users.service';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Order } from './order.entity';
-import type { CancellationReason, OrderStatus } from './order-status';
+import type { CancellationReason, OrderStatus, RejectionReason } from './order-status';
 import { OrdersService } from './orders.service';
 
 describe('OrdersService status transitions', () => {
@@ -66,6 +66,7 @@ describe('OrdersService status transitions', () => {
     to: OrderStatus;
     user: { id: number; role: string };
     cancellationReason?: CancellationReason;
+    rejectionReason?: RejectionReason;
   }) {
     const currentOrder = { ...baseOrder, status: options.from } as Order;
     const updatedOrder = {
@@ -76,11 +77,13 @@ describe('OrdersService status transitions', () => {
     const dto = {
       status: options.to,
       cancellationReason: options.cancellationReason,
+      rejectionReason: options.rejectionReason ?? (options.to === 'rejected' ? 'unavailable' : undefined),
     } as UpdateOrderStatusDto;
     const updateData: Partial<Order> = { status: options.to };
 
-    if (options.to === 'cancelled') {
-      updateData.cancellationReason = options.cancellationReason ?? null;
+    if (options.to === 'cancelled' || options.to === 'rejected') {
+      updateData.cancellationReason = options.to === 'rejected' ? 'unavailable' : options.cancellationReason ?? null;
+      updateData.cancellationReasonDetail = null;
     }
 
     orderRepository.findOne

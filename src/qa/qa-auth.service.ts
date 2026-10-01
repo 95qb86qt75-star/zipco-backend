@@ -41,7 +41,7 @@ export class QaAuthService {
     return {
       access_token: this.jwtService.sign(
         { sub: user.id, email: user.email, role: user.role },
-        { expiresIn: '1h' },
+        { expiresIn: '8h' },
       ),
       user: {
         id: user.id,

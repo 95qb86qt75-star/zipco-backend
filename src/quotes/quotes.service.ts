@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { Business } from '../businesses/business.entity';
 import {
   CatalogItem,
@@ -19,6 +19,8 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { RespondQuoteDto } from './dto/respond-quote.dto';
 import { QuoteRequest } from './quote-request.entity';
 import { PushNotificationsService } from '../notifications/push-notifications.service';
+import { UpdateQuoteStatusDto } from './dto/update-quote-status.dto';
+import { ProposeQuoteAlternativeDto } from './dto/propose-quote-alternative.dto';
 
 type CurrentUser = { id?: number; role?: string };
 
@@ -109,16 +111,16 @@ export class QuotesService {
 
   findByUser(userId: number) {
     return this.quoteRepository.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
+      where: { userId, customerDeletedAt: IsNull() },
+      order: { updatedAt: 'DESC' },
     });
   }
 
   async findByBusiness(businessId: number, currentUser: CurrentUser) {
     await this.ensureBusinessOwner(businessId, currentUser);
     return this.quoteRepository.find({
-      where: { businessId },
-      order: { createdAt: 'DESC' },
+      where: { businessId, businessDeletedAt: IsNull() },
+      order: { updatedAt: 'DESC' },
     });
   }
 
@@ -144,41 +146,89 @@ export class QuotesService {
     return updatedQuote;
   }
 
-  async updateCustomerStatus(
+  async proposeAlternative(id: number, data: ProposeQuoteAlternativeDto, currentUser: CurrentUser) {
+    const quote = await this.findOne(id);
+    await this.ensureBusinessOwner(quote.businessId, currentUser);
+    if (quote.status !== 'requested') throw new BadRequestException('Solo puedes proponer una alternativa antes de responder');
+    const message = data.message.trim();
+    const result = await this.quoteRepository.update({ id, status: 'requested' }, {
+      status: 'alternative_proposed',
+      alternativeDate: data.date ?? null,
+      alternativeTime: data.time ?? null,
+      alternativeItem: data.item?.trim() || null,
+      alternativeQuantity: data.quantity ?? null,
+      alternativePriceClp: data.priceClp ?? null,
+      alternativeMessage: message,
+    });
+    if (!result.affected) throw new ConflictException('La solicitud cambio. Actualiza e intenta nuevamente');
+    const updated = await this.findOne(id);
+    await this.pushNotifications?.notifyQuoteAlternative(updated);
+    return updated;
+  }
+
+  async updateStatus(
     id: number,
-    status: 'accepted' | 'declined' | 'cancelled',
+    data: UpdateQuoteStatusDto,
     currentUser: CurrentUser,
   ) {
     const quote = await this.findOne(id);
-    if (quote.userId !== currentUser.id && currentUser.role !== 'admin')
-      throw new ForbiddenException(
-        'No tienes permiso para modificar esta cotizacion',
-      );
+    const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
+    const isCustomer = quote.userId === currentUser.id;
+    const isBusiness = ownerUserId === currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
+    if (!isCustomer && !isBusiness && !isAdmin) {
+      throw new ForbiddenException('No tienes permiso para modificar esta cotizacion');
+    }
     const allowed =
-      status === 'cancelled' ? ['requested', 'quoted'] : ['quoted'];
-    if (!allowed.includes(quote.status))
-      throw new BadRequestException('Transicion de cotizacion no valida');
+      (isCustomer || isAdmin) && ['quoted', 'alternative_proposed'].includes(quote.status) && ['accepted', 'declined'].includes(data.status)
+      || (isCustomer || isAdmin) && ['requested', 'quoted'].includes(quote.status) && data.status === 'cancelled'
+      || (isBusiness || isAdmin) && quote.status === 'accepted' && data.status === 'ready'
+      || (isCustomer || isAdmin) && quote.status === 'ready' && data.status === 'completed';
+    if (!allowed) throw new BadRequestException('Transicion de cotizacion no valida');
+    if (data.status === 'cancelled' && !data.reason) {
+      throw new BadRequestException('Debes indicar un motivo de cancelacion');
+    }
+    if (data.reason === 'other' && !data.reasonDetail?.trim()) {
+      throw new BadRequestException('Debes escribir el otro motivo');
+    }
+    const update: Partial<QuoteRequest> = {
+      status: data.status,
+      closureReason: data.reason ?? null,
+      closureReasonDetail: data.reasonDetail?.trim() || null,
+    };
+    if (quote.status === 'alternative_proposed' && data.status === 'accepted' && quote.alternativePriceClp) {
+      update.quotedPriceClp = quote.alternativePriceClp;
+    }
     const result = await this.quoteRepository.update(
       { id, status: quote.status },
-      { status },
+      update,
     );
     if (!result.affected)
       throw new ConflictException(
         'La cotizacion cambio. Actualiza e intenta nuevamente',
       );
     const updatedQuote = await this.findOne(id);
-    const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
     await this.pushNotifications?.notifyQuoteStatusChanged(
       updatedQuote,
-      ownerUserId,
-      status,
+      isCustomer ? ownerUserId : quote.userId,
+      data.status,
+      isCustomer ? 'business' : 'customer',
     );
     return updatedQuote;
   }
 
+  /** Compatibilidad interna para llamadas anteriores; la API usa updateStatus. */
+  updateCustomerStatus(
+    id: number,
+    status: 'accepted' | 'declined' | 'cancelled',
+    currentUser: CurrentUser,
+  ) {
+    return this.updateStatus(id, { status } as UpdateQuoteStatusDto, currentUser);
+  }
+
   async setArchived(id: number, archived: boolean, currentUser: CurrentUser) {
     const quote = await this.findOne(id);
-    if (!['declined', 'cancelled'].includes(quote.status)) {
+    if (!['completed', 'declined', 'cancelled'].includes(quote.status)) {
       throw new BadRequestException('Solo puedes archivar cotizaciones finalizadas');
     }
     const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
@@ -190,6 +240,23 @@ export class QuotesService {
     const field = isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
     await this.quoteRepository.update(id, { [field]: archived ? new Date() : null });
     return this.findOne(id);
+  }
+
+  async setPermanentlyDeleted(id: number, currentUser: CurrentUser) {
+    const quote = await this.findOne(id);
+    const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
+    const isCustomer = quote.userId === currentUser.id;
+    const isBusiness = ownerUserId === currentUser.id;
+    if (!isCustomer && !isBusiness && currentUser.role !== 'admin') {
+      throw new ForbiddenException('No tienes permiso para eliminar esta cotizacion');
+    }
+    const archivedAt = isCustomer ? quote.customerArchivedAt : quote.businessArchivedAt;
+    if (!archivedAt) throw new BadRequestException('Primero mueve la cotizacion a Eliminados');
+    const field: 'customerDeletedAt' | 'businessDeletedAt' = isCustomer
+      ? 'customerDeletedAt'
+      : 'businessDeletedAt';
+    await this.quoteRepository.update(id, { [field]: new Date() });
+    return { deleted: true };
   }
 
   private async findOne(id: number) {

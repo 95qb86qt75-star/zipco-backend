@@ -50,6 +50,7 @@ describe('QuotesService security and consistency', () => {
     notifyNewQuote: jest.Mock;
     notifyQuoteResponded: jest.Mock;
     notifyQuoteStatusChanged: jest.Mock;
+    notifyQuoteAlternative: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -79,6 +80,7 @@ describe('QuotesService security and consistency', () => {
       notifyNewQuote: jest.fn(),
       notifyQuoteResponded: jest.fn(),
       notifyQuoteStatusChanged: jest.fn(),
+      notifyQuoteAlternative: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -217,6 +219,7 @@ describe('QuotesService security and consistency', () => {
       accepted,
       30,
       'accepted',
+      'business',
     );
   });
 
@@ -231,5 +234,26 @@ describe('QuotesService security and consistency', () => {
     await expect(
       service.updateCustomerStatus(40, 'accepted', { id: 10, role: 'user' }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('allows the owner to propose one alternative and notifies the customer', async () => {
+    const requested = { id: 40, businessId: 20, userId: 10, status: 'requested' };
+    const proposed = { ...requested, status: 'alternative_proposed', alternativeMessage: 'Puedo ofrecer otra opción' };
+    quoteRepository.findOne.mockResolvedValueOnce(requested).mockResolvedValueOnce(proposed);
+    quoteRepository.update.mockResolvedValue({ affected: 1 });
+
+    await expect(service.proposeAlternative(40, { message: 'Puedo ofrecer otra opción', priceClp: 18000 }, { id: 30, role: 'user' })).resolves.toEqual(proposed);
+    expect(pushNotifications.notifyQuoteAlternative).toHaveBeenCalledWith(proposed);
+  });
+
+  it('continues an accepted quote through ready and completed with the correct actors', async () => {
+    const accepted = { id: 40, businessId: 20, userId: 10, status: 'accepted' };
+    const ready = { ...accepted, status: 'ready' };
+    const completed = { ...accepted, status: 'completed' };
+    quoteRepository.update.mockResolvedValue({ affected: 1 });
+    quoteRepository.findOne.mockResolvedValueOnce(accepted).mockResolvedValueOnce(ready);
+    await expect(service.updateStatus(40, { status: 'ready' }, { id: 30, role: 'user' })).resolves.toEqual(ready);
+    quoteRepository.findOne.mockResolvedValueOnce(ready).mockResolvedValueOnce(completed);
+    await expect(service.updateStatus(40, { status: 'completed' }, { id: 10, role: 'user' })).resolves.toEqual(completed);
   });
 });

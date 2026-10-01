@@ -4,6 +4,7 @@ import {
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 
@@ -54,15 +55,34 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   cancellationReason: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  cancellationReasonDetail: string | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true }) alternativeDate: string | null;
+  @Column({ type: 'varchar', length: 5, nullable: true }) alternativeTime: string | null;
+  @Column({ type: 'varchar', length: 120, nullable: true }) alternativeItem: string | null;
+  @Column({ type: 'integer', nullable: true }) alternativeQuantity: number | null;
+  @Column({ type: 'integer', nullable: true }) alternativePriceClp: number | null;
+  @Column({ type: 'varchar', length: 1000, nullable: true }) alternativeMessage: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   customerArchivedAt: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   businessArchivedAt: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  customerDeletedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  businessDeletedAt: Date | null;
+
   @OneToMany(() => OrderItem, (item) => item.order)
   items: OrderItem[];
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

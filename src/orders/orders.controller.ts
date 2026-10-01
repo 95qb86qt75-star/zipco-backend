@@ -19,6 +19,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ArchiveRequestDto } from '../common/dto/archive-request.dto';
+import { ProposeOrderAlternativeDto } from './dto/propose-order-alternative.dto';
 
 @Controller('orders')
 export class OrdersController {
@@ -74,13 +75,19 @@ export class OrdersController {
     @Body() data: UpdateOrderStatusDto,
     @Request() req,
   ) {
-    const { status, cancellationReason } = data;
+    const { status, cancellationReason, rejectionReason, reasonDetail } = data;
+    return this.ordersService.updateStatus(id, {
+      status,
+      ...(cancellationReason ? { cancellationReason } : {}),
+      ...(rejectionReason ? { rejectionReason } : {}),
+      ...(reasonDetail ? { reasonDetail } : {}),
+    }, req.user);
+  }
 
-    return this.ordersService.updateStatus(
-      id,
-      { status, cancellationReason },
-      req.user,
-    );
+  @Patch(':id/alternative')
+  @UseGuards(AuthGuard('jwt'))
+  proposeAlternative(@Param('id', ParseIntPipe) id: number, @Body() data: ProposeOrderAlternativeDto, @Request() req) {
+    return this.ordersService.proposeAlternative(id, data, req.user);
   }
 
   @Patch(':id/archive')
@@ -91,5 +98,11 @@ export class OrdersController {
     @Request() req,
   ) {
     return this.ordersService.setArchived(id, data.archived, req.user);
+  }
+
+  @Patch(':id/delete-permanently')
+  @UseGuards(AuthGuard('jwt'))
+  deletePermanently(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.ordersService.setPermanentlyDeleted(id, req.user);
   }
 }

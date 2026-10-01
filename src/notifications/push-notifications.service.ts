@@ -100,6 +100,15 @@ export class PushNotificationsService {
     });
   }
 
+  async notifyOrderAlternative(order: Order, customerUserId: number): Promise<void> {
+    await this.sendToUser(customerUserId, {
+      type: 'order-alternative', title: 'Nueva alternativa del negocio',
+      body: 'El negocio propuso otra opción para tu pedido.',
+      tag: `order-${order.id}-alternative`, orderId: order.id,
+      url: `/?open=requests-customer&orderId=${order.id}`,
+    });
+  }
+
   async notifyOrderStatusChanged(
     order: Order,
     recipientUserId: number,
@@ -114,10 +123,15 @@ export class PushNotificationsService {
       completed: ['Pedido completado', 'El pedido fue marcado como completado.'],
     } as const;
     const [title, body] = copy[status];
+    const recipientCopy = recipientView === 'business' && status === 'accepted'
+      ? ['Alternativa aceptada', 'El cliente acepto la alternativa propuesta.']
+      : recipientView === 'business' && status === 'rejected'
+        ? ['Alternativa rechazada', 'El cliente rechazo la alternativa propuesta.']
+        : [title, body];
     await this.sendToUser(recipientUserId, {
       type: `order-${status}`,
-      title,
-      body,
+      title: recipientCopy[0],
+      body: recipientCopy[1],
       tag: `order-${order.id}-${status}`,
       orderId: order.id,
       url: `/?open=requests-${recipientView}&orderId=${order.id}`,
@@ -135,10 +149,20 @@ export class PushNotificationsService {
     });
   }
 
+  async notifyQuoteAlternative(quote: QuoteRequest): Promise<void> {
+    await this.sendToUser(quote.userId, {
+      type: 'quote-alternative', title: 'Nueva alternativa del negocio',
+      body: `El negocio propuso otra opción para ${quote.itemNameSnapshot}.`,
+      tag: `quote-${quote.id}-alternative`, quoteId: quote.id,
+      url: `/?open=requests-customer-quotes&quoteId=${quote.id}`,
+    });
+  }
+
   async notifyQuoteStatusChanged(
     quote: QuoteRequest,
-    ownerUserId: number,
-    status: Extract<QuoteStatus, 'accepted' | 'declined' | 'cancelled'>,
+    recipientUserId: number,
+    status: Extract<QuoteStatus, 'accepted' | 'declined' | 'cancelled' | 'ready' | 'completed'>,
+    recipientView: 'customer' | 'business' = 'business',
   ): Promise<void> {
     const copy = {
       accepted: [
@@ -153,15 +177,23 @@ export class PushNotificationsService {
         'Cotizacion cancelada',
         `El cliente cancelo su solicitud por ${quote.itemNameSnapshot}`,
       ],
+      ready: [
+        'Cotizacion lista',
+        `El negocio marco ${quote.itemNameSnapshot} como listo.`,
+      ],
+      completed: [
+        'Cotizacion completada',
+        `El cliente confirmo que recibio ${quote.itemNameSnapshot}.`,
+      ],
     } as const;
     const [title, body] = copy[status];
-    await this.sendToUser(ownerUserId, {
+    await this.sendToUser(recipientUserId, {
       type: `quote-${status}`,
       title,
       body,
       tag: `quote-${quote.id}-${status}`,
       quoteId: quote.id,
-      url: `/?open=requests-business-quotes&quoteId=${quote.id}`,
+      url: `/?open=requests-${recipientView}-quotes&quoteId=${quote.id}`,
     });
   }
 

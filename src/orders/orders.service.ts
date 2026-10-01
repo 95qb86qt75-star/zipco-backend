@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, IsNull, QueryFailedError, Repository } from 'typeorm';
 import {
   CatalogItem,
   CatalogItemKind,
@@ -24,11 +24,14 @@ import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { OrderCreationAttempt } from './order-creation-attempt.entity';
 import { PushNotificationsService } from '../notifications/push-notifications.service';
+import { ProposeOrderAlternativeDto } from './dto/propose-order-alternative.dto';
 import {
   CANCELLATION_REASONS,
   CancellationReason,
   ORDER_STATUSES,
   OrderStatus,
+  REJECTION_REASONS,
+  RejectionReason,
 } from './order-status';
 
 type CurrentUser = {
@@ -46,6 +49,10 @@ const ALLOWED_TRANSITIONS: Record<
     accepted: ['business', 'admin'],
     rejected: ['business', 'admin'],
     cancelled: ['customer'],
+  },
+  alternative_proposed: {
+    accepted: ['customer'],
+    rejected: ['customer'],
   },
   accepted: {
     ready: ['business'],
@@ -189,6 +196,10 @@ export class OrdersService {
     return CANCELLATION_REASONS.includes(reason as CancellationReason);
   }
 
+  private isRejectionReason(reason?: string): reason is RejectionReason {
+    return REJECTION_REASONS.includes(reason as RejectionReason);
+  }
+
   private async getOrderActors(
     order: Order,
     currentUser?: CurrentUser,
@@ -213,8 +224,10 @@ export class OrdersService {
     order: Order,
     newStatus: string,
     cancellationReason: string | undefined,
+    rejectionReason: string | undefined,
+    reasonDetail: string | undefined,
     currentUser?: CurrentUser,
-  ): Promise<CancellationReason | undefined> {
+  ): Promise<string | undefined> {
     const actors = await this.getOrderActors(order, currentUser);
 
     if (!this.isOrderStatus(newStatus)) {
@@ -247,7 +260,21 @@ export class OrdersService {
         );
       }
 
+      if (cancellationReason === 'other' && !reasonDetail?.trim()) {
+        throw new BadRequestException('Debes escribir el otro motivo');
+      }
       return cancellationReason;
+    }
+
+    if (newStatus === 'rejected') {
+      if (order.status === 'alternative_proposed') return 'other';
+      if (!this.isRejectionReason(rejectionReason)) {
+        throw new BadRequestException('Debes indicar un motivo de rechazo válido');
+      }
+      if (rejectionReason === 'other' && !reasonDetail?.trim()) {
+        throw new BadRequestException('Debes escribir el otro motivo');
+      }
+      return rejectionReason;
     }
 
     return undefined;
@@ -473,7 +500,7 @@ export class OrdersService {
 
   async findByUser(userId: number): Promise<Order[]> {
     return this.orderRepository.find({
-      where: { userId },
+      where: { userId, customerDeletedAt: IsNull() },
       relations: { items: true },
       order: { createdAt: 'DESC' },
     });
@@ -486,7 +513,7 @@ export class OrdersService {
     await this.ensureCanAccessBusinessOrders(businessId, currentUser);
 
     return this.orderRepository.find({
-      where: { businessId },
+      where: { businessId, businessDeletedAt: IsNull() },
       relations: { items: true },
       order: { createdAt: 'DESC' },
     });
@@ -502,12 +529,15 @@ export class OrdersService {
       order,
       data.status,
       data.cancellationReason,
+      data.rejectionReason,
+      data.reasonDetail,
       currentUser,
     );
     const updateData: Partial<Order> = { status: data.status };
 
-    if (data.status === 'cancelled') {
+    if (data.status === 'cancelled' || data.status === 'rejected') {
       updateData.cancellationReason = cancellationReason ?? null;
+      updateData.cancellationReasonDetail = data.reasonDetail?.trim() || (order.status === 'alternative_proposed' ? 'El cliente rechazó la alternativa propuesta.' : null);
     }
 
     const result = await this.orderRepository.update(
@@ -532,10 +562,27 @@ export class OrdersService {
     await this.pushNotifications?.notifyOrderStatusChanged(
       updatedOrder,
       recipientUserId,
-      data.status as Exclude<OrderStatus, 'pending'>,
+      data.status as Exclude<OrderStatus, 'pending' | 'alternative_proposed'>,
       recipientView,
     );
     return updatedOrder;
+  }
+
+  async proposeAlternative(id: number, data: ProposeOrderAlternativeDto, currentUser?: CurrentUser) {
+    const order = await this.findOne(id);
+    const actors = await this.getOrderActors(order, currentUser);
+    if (!actors.includes('business') && !actors.includes('admin')) throw new ForbiddenException('No tienes permiso para proponer una alternativa');
+    if (order.status !== 'pending') throw new BadRequestException('Solo puedes proponer una alternativa antes de aceptar o rechazar');
+    const result = await this.orderRepository.update({ id, status: 'pending' }, {
+      status: 'alternative_proposed', alternativeDate: data.date ?? null,
+      alternativeTime: data.time ?? null, alternativeItem: data.item?.trim() || null,
+      alternativeQuantity: data.quantity ?? null, alternativePriceClp: data.priceClp ?? null,
+      alternativeMessage: data.message.trim(),
+    });
+    if (!result.affected) throw new ConflictException('El pedido cambió. Actualiza e intenta nuevamente.');
+    const updated = await this.findOne(id);
+    await this.pushNotifications?.notifyOrderAlternative(updated, order.userId);
+    return updated;
   }
 
   async setArchived(id: number, archived: boolean, currentUser?: CurrentUser) {
@@ -552,5 +599,26 @@ export class OrdersService {
     const field = isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
     await this.orderRepository.update(id, { [field]: archived ? new Date() : null });
     return this.findOne(id);
+  }
+
+  async setPermanentlyDeleted(id: number, currentUser?: CurrentUser) {
+    const order = await this.findOne(id);
+    const business = await this.businessesService.findOne(order.businessId);
+    const isCustomer = currentUser?.id === order.userId;
+    const isBusiness = currentUser?.id === business.userId;
+    if (!isCustomer && !isBusiness && currentUser?.role !== 'admin') {
+      throw new ForbiddenException('No tienes permiso para eliminar este pedido');
+    }
+    const archivedField: 'customerArchivedAt' | 'businessArchivedAt' = isCustomer
+      ? 'customerArchivedAt'
+      : 'businessArchivedAt';
+    if (!order[archivedField]) {
+      throw new BadRequestException('Primero mueve el pedido a Eliminados');
+    }
+    const deletedField: 'customerDeletedAt' | 'businessDeletedAt' = isCustomer
+      ? 'customerDeletedAt'
+      : 'businessDeletedAt';
+    await this.orderRepository.update(id, { [deletedField]: new Date() });
+    return { deleted: true };
   }
 }
