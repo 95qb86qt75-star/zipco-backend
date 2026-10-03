@@ -63,27 +63,36 @@ export class QuoteRequest {
   @Column({ type: 'varchar', length: 50, nullable: true }) closureReason:
     | string
     | null;
-  @Column({ type: 'varchar', length: 1000, nullable: true }) closureReasonDetail:
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  closureReasonDetail: string | null;
+  @Column({ type: 'varchar', length: 10, nullable: true }) alternativeDate:
     | string
     | null;
-  @Column({ type: 'varchar', length: 10, nullable: true }) alternativeDate: string | null;
-  @Column({ type: 'varchar', length: 5, nullable: true }) alternativeTime: string | null;
-  @Column({ type: 'varchar', length: 120, nullable: true }) alternativeItem: string | null;
-  @Column({ type: 'integer', nullable: true }) alternativeQuantity: number | null;
-  @Column({ type: 'integer', nullable: true }) alternativePriceClp: number | null;
-  @Column({ type: 'varchar', length: 1000, nullable: true }) alternativeMessage: string | null;
-  @Column({ type: 'timestamptz', nullable: true }) customerArchivedAt:
-    | Date
+  @Column({ type: 'varchar', length: 5, nullable: true }) alternativeTime:
+    | string
     | null;
-  @Column({ type: 'timestamptz', nullable: true }) businessArchivedAt:
-    | Date
+  @Column({ type: 'varchar', length: 120, nullable: true }) alternativeItem:
+    | string
     | null;
-  @Column({ type: 'timestamptz', nullable: true }) customerDeletedAt:
-    | Date
+  @Column({ type: 'integer', nullable: true }) alternativeQuantity:
+    | number
     | null;
-  @Column({ type: 'timestamptz', nullable: true }) businessDeletedAt:
-    | Date
+  @Column({ type: 'integer', nullable: true }) alternativePriceClp:
+    | number
     | null;
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  alternativeMessage: string | null;
+  @Column({ type: 'varchar', length: 2048, nullable: true }) alternativePhoto:
+    | string
+    | null;
+  @Column({ type: 'timestamptz', nullable: true })
+  customerArchivedAt: Date | null;
+  @Column({ type: 'timestamptz', nullable: true })
+  businessArchivedAt: Date | null;
+  @Column({ type: 'timestamptz', nullable: true })
+  customerDeletedAt: Date | null;
+  @Column({ type: 'timestamptz', nullable: true })
+  businessDeletedAt: Date | null;
   @Column({ type: 'uuid' }) idempotencyKey: string;
   @CreateDateColumn() createdAt: Date;
   @UpdateDateColumn() updatedAt: Date;

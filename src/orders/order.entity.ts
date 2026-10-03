@@ -58,12 +58,26 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   cancellationReasonDetail: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) alternativeDate: string | null;
-  @Column({ type: 'varchar', length: 5, nullable: true }) alternativeTime: string | null;
-  @Column({ type: 'varchar', length: 120, nullable: true }) alternativeItem: string | null;
-  @Column({ type: 'integer', nullable: true }) alternativeQuantity: number | null;
-  @Column({ type: 'integer', nullable: true }) alternativePriceClp: number | null;
-  @Column({ type: 'varchar', length: 1000, nullable: true }) alternativeMessage: string | null;
+  @Column({ type: 'varchar', length: 10, nullable: true }) alternativeDate:
+    | string
+    | null;
+  @Column({ type: 'varchar', length: 5, nullable: true }) alternativeTime:
+    | string
+    | null;
+  @Column({ type: 'varchar', length: 120, nullable: true }) alternativeItem:
+    | string
+    | null;
+  @Column({ type: 'integer', nullable: true }) alternativeQuantity:
+    | number
+    | null;
+  @Column({ type: 'integer', nullable: true }) alternativePriceClp:
+    | number
+    | null;
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  alternativeMessage: string | null;
+  @Column({ type: 'varchar', length: 2048, nullable: true }) alternativePhoto:
+    | string
+    | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   customerArchivedAt: Date | null;

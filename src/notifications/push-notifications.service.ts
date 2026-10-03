@@ -13,8 +13,6 @@ import { UpdatePushPresenceDto } from './dto/update-push-presence.dto';
 import { PushSubscription } from './push-subscription.entity';
 
 type WebPushError = Error & { statusCode?: number };
-const FOREGROUND_STALE_MS = 12_000;
-const FOREGROUND_RETRY_MS = 13_000;
 
 @Injectable()
 export class PushNotificationsService {
@@ -100,11 +98,16 @@ export class PushNotificationsService {
     });
   }
 
-  async notifyOrderAlternative(order: Order, customerUserId: number): Promise<void> {
+  async notifyOrderAlternative(
+    order: Order,
+    customerUserId: number,
+  ): Promise<void> {
     await this.sendToUser(customerUserId, {
-      type: 'order-alternative', title: 'Nueva alternativa del negocio',
+      type: 'order-alternative',
+      title: 'Nueva alternativa del negocio',
       body: 'El negocio propuso otra opción para tu pedido.',
-      tag: `order-${order.id}-alternative`, orderId: order.id,
+      tag: `order-${order.id}-alternative`,
+      orderId: order.id,
       url: `/?open=requests-customer&orderId=${order.id}`,
     });
   }
@@ -118,16 +121,29 @@ export class PushNotificationsService {
     const copy = {
       accepted: ['Pedido aceptado', 'El negocio acepto tu pedido.'],
       rejected: ['Pedido rechazado', 'El negocio rechazo tu pedido.'],
-      cancelled: ['Pedido cancelado', `${order.customerName || 'El cliente'} cancelo el pedido.`],
+      cancelled: [
+        'Pedido cancelado',
+        `${order.customerName || 'El cliente'} cancelo el pedido.`,
+      ],
       ready: ['Tu pedido esta listo', 'El negocio marco tu pedido como listo.'],
-      completed: ['Pedido completado', 'El pedido fue marcado como completado.'],
+      completed: [
+        'Pedido completado',
+        'El pedido fue marcado como completado.',
+      ],
     } as const;
     const [title, body] = copy[status];
-    const recipientCopy = recipientView === 'business' && status === 'accepted'
-      ? ['Alternativa aceptada', 'El cliente acepto la alternativa propuesta.']
-      : recipientView === 'business' && status === 'rejected'
-        ? ['Alternativa rechazada', 'El cliente rechazo la alternativa propuesta.']
-        : [title, body];
+    const recipientCopy =
+      recipientView === 'business' && status === 'accepted'
+        ? [
+            'Alternativa aceptada',
+            'El cliente acepto la alternativa propuesta.',
+          ]
+        : recipientView === 'business' && status === 'rejected'
+          ? [
+              'Alternativa rechazada',
+              'El cliente rechazo la alternativa propuesta.',
+            ]
+          : [title, body];
     await this.sendToUser(recipientUserId, {
       type: `order-${status}`,
       title: recipientCopy[0],
@@ -151,9 +167,11 @@ export class PushNotificationsService {
 
   async notifyQuoteAlternative(quote: QuoteRequest): Promise<void> {
     await this.sendToUser(quote.userId, {
-      type: 'quote-alternative', title: 'Nueva alternativa del negocio',
+      type: 'quote-alternative',
+      title: 'Nueva alternativa del negocio',
       body: `El negocio propuso otra opción para ${quote.itemNameSnapshot}.`,
-      tag: `quote-${quote.id}-alternative`, quoteId: quote.id,
+      tag: `quote-${quote.id}-alternative`,
+      quoteId: quote.id,
       url: `/?open=requests-customer-quotes&quoteId=${quote.id}`,
     });
   }
@@ -161,7 +179,10 @@ export class PushNotificationsService {
   async notifyQuoteStatusChanged(
     quote: QuoteRequest,
     recipientUserId: number,
-    status: Extract<QuoteStatus, 'accepted' | 'declined' | 'cancelled' | 'ready' | 'completed'>,
+    status: Extract<
+      QuoteStatus,
+      'accepted' | 'declined' | 'cancelled' | 'ready' | 'completed'
+    >,
     recipientView: 'customer' | 'business' = 'business',
   ): Promise<void> {
     const copy = {
@@ -178,8 +199,8 @@ export class PushNotificationsService {
         `El cliente cancelo su solicitud por ${quote.itemNameSnapshot}`,
       ],
       ready: [
-        'Cotizacion lista',
-        `El negocio marco ${quote.itemNameSnapshot} como listo.`,
+        'Servicio realizado',
+        `El negocio marco ${quote.itemNameSnapshot} como realizado. Confirma cuando lo hayas recibido conforme.`,
       ],
       completed: [
         'Cotizacion completada',
@@ -207,44 +228,12 @@ export class PushNotificationsService {
       const targets = await this.subscriptions.find({
         where: { userId },
       });
-      const eligibleTargets = targets.filter((target) =>
-        this.canReceiveSystemPush(target),
-      );
-      const deferredTargets = targets.filter(
-        (target) => !this.canReceiveSystemPush(target),
-      );
-      await this.sendToTargets(eligibleTargets, payload);
-      deferredTargets.forEach((target) => {
-        const timeout = setTimeout(() => {
-          void this.retryDeferredTarget(userId, target.endpoint, payload);
-        }, FOREGROUND_RETRY_MS);
-        timeout.unref?.();
-      });
+      await this.sendToTargets(targets, payload);
     } catch {
       this.logger.error(
         `No se pudieron procesar las notificaciones ${String(payload.tag ?? '')}`,
       );
     }
-  }
-
-  private canReceiveSystemPush(target: PushSubscription): boolean {
-    return (
-      !target.isForeground ||
-      !target.lastSeenAt ||
-      target.lastSeenAt.getTime() < Date.now() - FOREGROUND_STALE_MS
-    );
-  }
-
-  private async retryDeferredTarget(
-    userId: number,
-    endpoint: string,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
-    const target = await this.subscriptions.findOne({
-      where: { userId, endpoint },
-    });
-    if (!target || !this.canReceiveSystemPush(target)) return;
-    await this.sendToTargets([target], payload);
   }
 
   private async sendToTargets(

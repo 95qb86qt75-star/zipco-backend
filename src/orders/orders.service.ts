@@ -608,6 +608,7 @@ export class OrdersService {
         alternativeQuantity: data.quantity ?? null,
         alternativePriceClp: data.priceClp ?? null,
         alternativeMessage: data.message.trim(),
+        alternativePhoto: data.photo ?? null,
       },
     );
     if (!result.affected)

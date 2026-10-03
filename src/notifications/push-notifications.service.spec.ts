@@ -150,7 +150,7 @@ describe('PushNotificationsService', () => {
     );
   });
 
-  it('does not send Web Push to an app recently reported in foreground', async () => {
+  it('always delivers to the worker and lets the client decide foreground presentation', async () => {
     repository.find.mockResolvedValue([
       {
         id: 5,
@@ -167,11 +167,10 @@ describe('PushNotificationsService', () => {
       userId: 44,
       itemNameSnapshot: 'Reparacion',
     } as QuoteRequest);
-    expect(webPush.sendNotification).not.toHaveBeenCalled();
+    expect(webPush.sendNotification).toHaveBeenCalledTimes(1);
   });
 
-  it('retries a skipped Push after the app moves to background', async () => {
-    jest.useFakeTimers();
+  it('does not depend on a later in-memory timer to deliver a Push', async () => {
     const visibleTarget = {
       id: 7,
       userId: 44,
@@ -182,11 +181,6 @@ describe('PushNotificationsService', () => {
       lastSeenAt: new Date(),
     };
     repository.find.mockResolvedValue([visibleTarget]);
-    repository.findOne.mockResolvedValue({
-      ...visibleTarget,
-      isForeground: false,
-      lastSeenAt: new Date(),
-    });
     jest.mocked(webPush.sendNotification).mockResolvedValue({} as never);
     const service = createService();
 
@@ -195,11 +189,8 @@ describe('PushNotificationsService', () => {
       userId: 44,
       itemNameSnapshot: 'Reparacion',
     } as QuoteRequest);
-    expect(webPush.sendNotification).not.toHaveBeenCalled();
-
-    await jest.advanceTimersByTimeAsync(13_000);
     expect(webPush.sendNotification).toHaveBeenCalledTimes(1);
-    jest.useRealTimers();
+    expect(repository.findOne).not.toHaveBeenCalled();
   });
 
   it('recovers Web Push if a foreground heartbeat becomes stale', async () => {

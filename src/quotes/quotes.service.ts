@@ -179,6 +179,7 @@ export class QuotesService {
         alternativeQuantity: data.quantity ?? null,
         alternativePriceClp: data.priceClp ?? null,
         alternativeMessage: message,
+        alternativePhoto: data.photo ?? null,
       },
     );
     if (!result.affected)
