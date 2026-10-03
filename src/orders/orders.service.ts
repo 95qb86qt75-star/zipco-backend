@@ -269,7 +269,9 @@ export class OrdersService {
     if (newStatus === 'rejected') {
       if (order.status === 'alternative_proposed') return 'other';
       if (!this.isRejectionReason(rejectionReason)) {
-        throw new BadRequestException('Debes indicar un motivo de rechazo válido');
+        throw new BadRequestException(
+          'Debes indicar un motivo de rechazo válido',
+        );
       }
       if (rejectionReason === 'other' && !reasonDetail?.trim()) {
         throw new BadRequestException('Debes escribir el otro motivo');
@@ -509,14 +511,25 @@ export class OrdersService {
   async findByBusiness(
     businessId: number,
     currentUser?: CurrentUser,
-  ): Promise<Order[]> {
+  ): Promise<Array<Order & { customerImage: string | null }>> {
     await this.ensureCanAccessBusinessOrders(businessId, currentUser);
 
-    return this.orderRepository.find({
+    const orders = await this.orderRepository.find({
       where: { businessId, businessDeletedAt: IsNull() },
       relations: { items: true },
       order: { createdAt: 'DESC' },
     });
+    const photos = new Map<number, string | null>();
+    await Promise.all(
+      [...new Set(orders.map((order) => order.userId))].map(async (userId) => {
+        const user = await this.usersService.findOne(userId);
+        photos.set(userId, user?.photo ?? null);
+      }),
+    );
+    return orders.map((order) => ({
+      ...order,
+      customerImage: photos.get(order.userId) ?? null,
+    }));
   }
 
   async updateStatus(
@@ -537,7 +550,11 @@ export class OrdersService {
 
     if (data.status === 'cancelled' || data.status === 'rejected') {
       updateData.cancellationReason = cancellationReason ?? null;
-      updateData.cancellationReasonDetail = data.reasonDetail?.trim() || (order.status === 'alternative_proposed' ? 'El cliente rechazó la alternativa propuesta.' : null);
+      updateData.cancellationReasonDetail =
+        data.reasonDetail?.trim() ||
+        (order.status === 'alternative_proposed'
+          ? 'El cliente rechazó la alternativa propuesta.'
+          : null);
     }
 
     const result = await this.orderRepository.update(
@@ -553,12 +570,10 @@ export class OrdersService {
 
     const updatedOrder = await this.findOne(id);
     const business = await this.businessesService.findOne(order.businessId);
-    const recipientUserId = currentUser?.id === order.userId
-      ? business.userId
-      : order.userId;
-    const recipientView = currentUser?.id === order.userId
-      ? 'business'
-      : 'customer';
+    const recipientUserId =
+      currentUser?.id === order.userId ? business.userId : order.userId;
+    const recipientView =
+      currentUser?.id === order.userId ? 'business' : 'customer';
     await this.pushNotifications?.notifyOrderStatusChanged(
       updatedOrder,
       recipientUserId,
@@ -568,18 +583,37 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  async proposeAlternative(id: number, data: ProposeOrderAlternativeDto, currentUser?: CurrentUser) {
+  async proposeAlternative(
+    id: number,
+    data: ProposeOrderAlternativeDto,
+    currentUser?: CurrentUser,
+  ) {
     const order = await this.findOne(id);
     const actors = await this.getOrderActors(order, currentUser);
-    if (!actors.includes('business') && !actors.includes('admin')) throw new ForbiddenException('No tienes permiso para proponer una alternativa');
-    if (order.status !== 'pending') throw new BadRequestException('Solo puedes proponer una alternativa antes de aceptar o rechazar');
-    const result = await this.orderRepository.update({ id, status: 'pending' }, {
-      status: 'alternative_proposed', alternativeDate: data.date ?? null,
-      alternativeTime: data.time ?? null, alternativeItem: data.item?.trim() || null,
-      alternativeQuantity: data.quantity ?? null, alternativePriceClp: data.priceClp ?? null,
-      alternativeMessage: data.message.trim(),
-    });
-    if (!result.affected) throw new ConflictException('El pedido cambió. Actualiza e intenta nuevamente.');
+    if (!actors.includes('business') && !actors.includes('admin'))
+      throw new ForbiddenException(
+        'No tienes permiso para proponer una alternativa',
+      );
+    if (order.status !== 'pending')
+      throw new BadRequestException(
+        'Solo puedes proponer una alternativa antes de aceptar o rechazar',
+      );
+    const result = await this.orderRepository.update(
+      { id, status: 'pending' },
+      {
+        status: 'alternative_proposed',
+        alternativeDate: data.date ?? null,
+        alternativeTime: data.time ?? null,
+        alternativeItem: data.item?.trim() || null,
+        alternativeQuantity: data.quantity ?? null,
+        alternativePriceClp: data.priceClp ?? null,
+        alternativeMessage: data.message.trim(),
+      },
+    );
+    if (!result.affected)
+      throw new ConflictException(
+        'El pedido cambió. Actualiza e intenta nuevamente.',
+      );
     const updated = await this.findOne(id);
     await this.pushNotifications?.notifyOrderAlternative(updated, order.userId);
     return updated;
@@ -594,10 +628,14 @@ export class OrdersService {
     const isCustomer = currentUser?.id === order.userId;
     const isBusiness = currentUser?.id === business.userId;
     if (!isCustomer && !isBusiness && currentUser?.role !== 'admin') {
-      throw new ForbiddenException('No tienes permiso para archivar este pedido');
+      throw new ForbiddenException(
+        'No tienes permiso para archivar este pedido',
+      );
     }
     const field = isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
-    await this.orderRepository.update(id, { [field]: archived ? new Date() : null });
+    await this.orderRepository.update(id, {
+      [field]: archived ? new Date() : null,
+    });
     return this.findOne(id);
   }
 
@@ -607,11 +645,12 @@ export class OrdersService {
     const isCustomer = currentUser?.id === order.userId;
     const isBusiness = currentUser?.id === business.userId;
     if (!isCustomer && !isBusiness && currentUser?.role !== 'admin') {
-      throw new ForbiddenException('No tienes permiso para eliminar este pedido');
+      throw new ForbiddenException(
+        'No tienes permiso para eliminar este pedido',
+      );
     }
-    const archivedField: 'customerArchivedAt' | 'businessArchivedAt' = isCustomer
-      ? 'customerArchivedAt'
-      : 'businessArchivedAt';
+    const archivedField: 'customerArchivedAt' | 'businessArchivedAt' =
+      isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
     if (!order[archivedField]) {
       throw new BadRequestException('Primero mueve el pedido a Eliminados');
     }

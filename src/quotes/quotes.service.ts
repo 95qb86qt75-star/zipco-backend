@@ -118,10 +118,21 @@ export class QuotesService {
 
   async findByBusiness(businessId: number, currentUser: CurrentUser) {
     await this.ensureBusinessOwner(businessId, currentUser);
-    return this.quoteRepository.find({
+    const quotes = await this.quoteRepository.find({
       where: { businessId, businessDeletedAt: IsNull() },
       order: { updatedAt: 'DESC' },
     });
+    const photos = new Map<number, string | null>();
+    await Promise.all(
+      [...new Set(quotes.map((quote) => quote.userId))].map(async (userId) => {
+        const user = await this.usersService.findOne(userId);
+        photos.set(userId, user?.photo ?? null);
+      }),
+    );
+    return quotes.map((quote) => ({
+      ...quote,
+      customerPhoto: photos.get(quote.userId) ?? null,
+    }));
   }
 
   async respond(id: number, data: RespondQuoteDto, currentUser: CurrentUser) {
@@ -146,21 +157,34 @@ export class QuotesService {
     return updatedQuote;
   }
 
-  async proposeAlternative(id: number, data: ProposeQuoteAlternativeDto, currentUser: CurrentUser) {
+  async proposeAlternative(
+    id: number,
+    data: ProposeQuoteAlternativeDto,
+    currentUser: CurrentUser,
+  ) {
     const quote = await this.findOne(id);
     await this.ensureBusinessOwner(quote.businessId, currentUser);
-    if (quote.status !== 'requested') throw new BadRequestException('Solo puedes proponer una alternativa antes de responder');
+    if (quote.status !== 'requested')
+      throw new BadRequestException(
+        'Solo puedes proponer una alternativa antes de responder',
+      );
     const message = data.message.trim();
-    const result = await this.quoteRepository.update({ id, status: 'requested' }, {
-      status: 'alternative_proposed',
-      alternativeDate: data.date ?? null,
-      alternativeTime: data.time ?? null,
-      alternativeItem: data.item?.trim() || null,
-      alternativeQuantity: data.quantity ?? null,
-      alternativePriceClp: data.priceClp ?? null,
-      alternativeMessage: message,
-    });
-    if (!result.affected) throw new ConflictException('La solicitud cambio. Actualiza e intenta nuevamente');
+    const result = await this.quoteRepository.update(
+      { id, status: 'requested' },
+      {
+        status: 'alternative_proposed',
+        alternativeDate: data.date ?? null,
+        alternativeTime: data.time ?? null,
+        alternativeItem: data.item?.trim() || null,
+        alternativeQuantity: data.quantity ?? null,
+        alternativePriceClp: data.priceClp ?? null,
+        alternativeMessage: message,
+      },
+    );
+    if (!result.affected)
+      throw new ConflictException(
+        'La solicitud cambio. Actualiza e intenta nuevamente',
+      );
     const updated = await this.findOne(id);
     await this.pushNotifications?.notifyQuoteAlternative(updated);
     return updated;
@@ -177,19 +201,37 @@ export class QuotesService {
     const isBusiness = ownerUserId === currentUser.id;
     const isAdmin = currentUser.role === 'admin';
     if (!isCustomer && !isBusiness && !isAdmin) {
-      throw new ForbiddenException('No tienes permiso para modificar esta cotizacion');
+      throw new ForbiddenException(
+        'No tienes permiso para modificar esta cotizacion',
+      );
     }
     const allowed =
-      (isCustomer || isAdmin) && ['quoted', 'alternative_proposed'].includes(quote.status) && ['accepted', 'declined'].includes(data.status)
-      || (isCustomer || isAdmin) && ['requested', 'quoted'].includes(quote.status) && data.status === 'cancelled'
-      || (isBusiness || isAdmin) && quote.status === 'requested' && data.status === 'declined'
-      || (isBusiness || isAdmin) && quote.status === 'accepted' && data.status === 'ready'
-      || (isCustomer || isAdmin) && quote.status === 'ready' && data.status === 'completed';
-    if (!allowed) throw new BadRequestException('Transicion de cotizacion no valida');
+      ((isCustomer || isAdmin) &&
+        ['quoted', 'alternative_proposed'].includes(quote.status) &&
+        ['accepted', 'declined'].includes(data.status)) ||
+      ((isCustomer || isAdmin) &&
+        ['requested', 'quoted'].includes(quote.status) &&
+        data.status === 'cancelled') ||
+      ((isBusiness || isAdmin) &&
+        quote.status === 'requested' &&
+        data.status === 'declined') ||
+      ((isBusiness || isAdmin) &&
+        quote.status === 'accepted' &&
+        data.status === 'ready') ||
+      ((isCustomer || isAdmin) &&
+        quote.status === 'ready' &&
+        data.status === 'completed');
+    if (!allowed)
+      throw new BadRequestException('Transicion de cotizacion no valida');
     if (data.status === 'cancelled' && !data.reason) {
       throw new BadRequestException('Debes indicar un motivo de cancelacion');
     }
-    if (isBusiness && quote.status === 'requested' && data.status === 'declined' && !data.reason) {
+    if (
+      isBusiness &&
+      quote.status === 'requested' &&
+      data.status === 'declined' &&
+      !data.reason
+    ) {
       throw new BadRequestException('Debes indicar un motivo de rechazo');
     }
     if (data.reason === 'other' && !data.reasonDetail?.trim()) {
@@ -200,7 +242,11 @@ export class QuotesService {
       closureReason: data.reason ?? null,
       closureReasonDetail: data.reasonDetail?.trim() || null,
     };
-    if (quote.status === 'alternative_proposed' && data.status === 'accepted' && quote.alternativePriceClp) {
+    if (
+      quote.status === 'alternative_proposed' &&
+      data.status === 'accepted' &&
+      quote.alternativePriceClp
+    ) {
       update.quotedPriceClp = quote.alternativePriceClp;
     }
     const result = await this.quoteRepository.update(
@@ -227,22 +273,32 @@ export class QuotesService {
     status: 'accepted' | 'declined' | 'cancelled',
     currentUser: CurrentUser,
   ) {
-    return this.updateStatus(id, { status } as UpdateQuoteStatusDto, currentUser);
+    return this.updateStatus(
+      id,
+      { status } as UpdateQuoteStatusDto,
+      currentUser,
+    );
   }
 
   async setArchived(id: number, archived: boolean, currentUser: CurrentUser) {
     const quote = await this.findOne(id);
     if (!['completed', 'declined', 'cancelled'].includes(quote.status)) {
-      throw new BadRequestException('Solo puedes archivar cotizaciones finalizadas');
+      throw new BadRequestException(
+        'Solo puedes archivar cotizaciones finalizadas',
+      );
     }
     const ownerUserId = await this.findBusinessOwnerUserId(quote.businessId);
     const isCustomer = quote.userId === currentUser.id;
     const isBusiness = ownerUserId === currentUser.id;
     if (!isCustomer && !isBusiness && currentUser.role !== 'admin') {
-      throw new ForbiddenException('No tienes permiso para archivar esta cotizacion');
+      throw new ForbiddenException(
+        'No tienes permiso para archivar esta cotizacion',
+      );
     }
     const field = isCustomer ? 'customerArchivedAt' : 'businessArchivedAt';
-    await this.quoteRepository.update(id, { [field]: archived ? new Date() : null });
+    await this.quoteRepository.update(id, {
+      [field]: archived ? new Date() : null,
+    });
     return this.findOne(id);
   }
 
@@ -252,10 +308,15 @@ export class QuotesService {
     const isCustomer = quote.userId === currentUser.id;
     const isBusiness = ownerUserId === currentUser.id;
     if (!isCustomer && !isBusiness && currentUser.role !== 'admin') {
-      throw new ForbiddenException('No tienes permiso para eliminar esta cotizacion');
+      throw new ForbiddenException(
+        'No tienes permiso para eliminar esta cotizacion',
+      );
     }
-    const archivedAt = isCustomer ? quote.customerArchivedAt : quote.businessArchivedAt;
-    if (!archivedAt) throw new BadRequestException('Primero mueve la cotizacion a Eliminados');
+    const archivedAt = isCustomer
+      ? quote.customerArchivedAt
+      : quote.businessArchivedAt;
+    if (!archivedAt)
+      throw new BadRequestException('Primero mueve la cotizacion a Eliminados');
     const field: 'customerDeletedAt' | 'businessDeletedAt' = isCustomer
       ? 'customerDeletedAt'
       : 'businessDeletedAt';

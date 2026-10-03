@@ -125,13 +125,21 @@ describe('OrdersService', () => {
     businessesService.findOne.mockResolvedValue(business);
 
     await expect(
-      service.updateStatus(1, { status: 'rejected', rejectionReason: 'unavailable' }, { id: 30, role: 'user' }),
+      service.updateStatus(
+        1,
+        { status: 'rejected', rejectionReason: 'unavailable' },
+        { id: 30, role: 'user' },
+      ),
     ).resolves.toEqual(rejectedOrder);
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.update).toHaveBeenCalledWith(
       { id: 1, status: 'pending' },
-      { status: 'rejected', cancellationReason: 'unavailable', cancellationReasonDetail: null },
+      {
+        status: 'rejected',
+        cancellationReason: 'unavailable',
+        cancellationReasonDetail: null,
+      },
     );
   });
 
@@ -147,13 +155,25 @@ describe('OrdersService', () => {
       businessesService.findOne.mockResolvedValue(business);
 
       await expect(
-        service.updateStatus(1, status === 'rejected' ? { status, rejectionReason: 'unavailable' } : { status }, { id: 99, role: 'admin' }),
+        service.updateStatus(
+          1,
+          status === 'rejected'
+            ? { status, rejectionReason: 'unavailable' }
+            : { status },
+          { id: 99, role: 'admin' },
+        ),
       ).resolves.toEqual(updatedOrder);
 
       expect(businessesService.findOne).toHaveBeenCalledWith(20);
       expect(orderRepository.update).toHaveBeenCalledWith(
         { id: 1, status: 'pending' },
-        status === 'rejected' ? { status, cancellationReason: 'unavailable', cancellationReasonDetail: null } : { status },
+        status === 'rejected'
+          ? {
+              status,
+              cancellationReason: 'unavailable',
+              cancellationReasonDetail: null,
+            }
+          : { status },
       );
     },
   );
@@ -193,7 +213,9 @@ describe('OrdersService', () => {
 
     await expect(
       service.findByBusiness(20, { id: 30, role: 'user' }),
-    ).resolves.toEqual(orders);
+    ).resolves.toEqual(
+      orders.map((order) => ({ ...order, customerImage: null })),
+    );
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.find).toHaveBeenCalledWith({
@@ -211,7 +233,9 @@ describe('OrdersService', () => {
 
     await expect(
       service.findByBusiness(20, { id: 99, role: 'admin' }),
-    ).resolves.toEqual(orders);
+    ).resolves.toEqual(
+      orders.map((order) => ({ ...order, customerImage: null })),
+    );
 
     expect(businessesService.findOne).toHaveBeenCalledWith(20);
     expect(orderRepository.find).toHaveBeenCalledWith({
