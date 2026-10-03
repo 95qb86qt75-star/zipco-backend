@@ -238,6 +238,13 @@ export class BusinessesService {
   ): Promise<Business> {
     const business = await this.findOne(id);
     this.ensureCanManageBusiness(business, currentUser);
+
+    // Publishing an already-approved profile must never remove it from public
+    // discovery. Owners may keep editing approved profiles through PATCH.
+    if (business.status === 'approved') {
+      return business;
+    }
+
     this.ensureReadyForReview(business);
 
     business.status = 'pending';

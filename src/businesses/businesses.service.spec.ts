@@ -376,6 +376,19 @@ describe('BusinessesService', () => {
     ).resolves.toMatchObject({ status: 'pending' });
   });
 
+  it('submitForReview() keeps an approved owner profile publicly approved', async () => {
+    const approvedBusiness = {
+      ...existingBusiness,
+      status: 'approved',
+    } as Business;
+    businessRepository.findOne.mockResolvedValue(approvedBusiness);
+
+    await expect(
+      service.submitForReview(1, { id: 10, role: 'user' }),
+    ).resolves.toBe(approvedBusiness);
+    expect(businessRepository.save).not.toHaveBeenCalled();
+  });
+
   it('submitForReview() rejects a request from a non-owner', async () => {
     businessRepository.findOne.mockResolvedValue(existingBusiness);
 
